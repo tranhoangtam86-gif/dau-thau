@@ -142,6 +142,10 @@ const TYPE_ORDER = ['bao_gia', 'ho_so_yeu_cau', 'bien_ban', 'hop_dong'];
 
 // UUID đặc biệt đại diện cho "áp dụng cho mọi loại dự án" (thay vì để trống)
 const GENERIC_TYPE_ID = '00000000-0000-0000-0000-000000000000';
+// Schema giả cho "Dự án" — không có trường cố định, chỉ chứa trường tùy chỉnh do admin khai báo
+const PROJECT_BASE_SCHEMA = { key: 'project', label: 'Dự án (thông tin chung)', fields: [] };
+// Schema giả cho "Gói thầu" — tương tự, chỉ chứa trường tùy chỉnh
+const GOI_THAU_BASE_SCHEMA = { key: 'goi_thau', label: 'Gói thầu (thông tin riêng)', fields: [] };
 
 const ROLE_LABELS = { admin: 'Quản trị viên', editor: 'Biên tập', viewer: 'Chỉ xem' };
 const ROLE_BADGE_CLASS = {
@@ -259,8 +263,15 @@ function ItemsEditor({ rows, onChange }) {
   const list = rows && rows.length ? rows : [emptyItemRow()];
   const total = list.reduce((sum, r) => sum + lineItemTotal(r), 0);
 
+  const COLS = ['tenHangHoa', 'donViTinh', 'soLuong', 'donGia'];
+  const [widths, setWidths] = useState({ tenHangHoa: 220, donViTinh: 96, soLuong: 96, donGia: 128 });
+  const dragRef = useRef(null);
+
   function updateRow(id, key, val) {
     onChange(list.map((r) => (r.id === id ? { ...r, [key]: val } : r)));
+    // tự động kéo giãn cột theo độ dài nội dung vừa nhập
+    const suggested = Math.min(420, Math.max(60, String(val).length * 8 + 32));
+    setWidths((prev) => (suggested > prev[key] ? { ...prev, [key]: suggested } : prev));
   }
   function addRow() {
     onChange([...list, emptyItemRow()]);
@@ -269,35 +280,72 @@ function ItemsEditor({ rows, onChange }) {
     onChange(list.length > 1 ? list.filter((r) => r.id !== id) : list);
   }
 
+  function startResize(e, key) {
+    e.preventDefault();
+    dragRef.current = { key, startX: e.clientX, startWidth: widths[key] };
+    window.addEventListener('mousemove', onDragMove);
+    window.addEventListener('mouseup', onDragEnd);
+  }
+  function onDragMove(e) {
+    if (!dragRef.current) return;
+    const { key, startX, startWidth } = dragRef.current;
+    const next = Math.max(50, startWidth + (e.clientX - startX));
+    setWidths((prev) => ({ ...prev, [key]: next }));
+  }
+  function onDragEnd() {
+    dragRef.current = null;
+    window.removeEventListener('mousemove', onDragMove);
+    window.removeEventListener('mouseup', onDragEnd);
+  }
+
+  function ResizeHandle({ colKey }) {
+    return (
+      <span
+        onMouseDown={(e) => startResize(e, colKey)}
+        className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none hover:bg-teal-300/60"
+      />
+    );
+  }
+
   return (
-    <div className="rounded-md border border-stone-300 overflow-hidden">
-      <table className="w-full text-sm">
+    <div className="overflow-x-auto rounded-md border border-stone-300">
+      <table className="text-sm" style={{ tableLayout: 'fixed', width: 'max-content', minWidth: '100%' }}>
         <thead className="bg-stone-100 text-stone-600">
           <tr>
-            <th className="px-2 py-2 text-left font-medium">Tên hàng hóa / dịch vụ</th>
-            <th className="px-2 py-2 text-left font-medium w-24">Đơn vị</th>
-            <th className="px-2 py-2 text-left font-medium w-24">Số lượng</th>
-            <th className="px-2 py-2 text-left font-medium w-32">Đơn giá</th>
-            <th className="px-2 py-2 text-right font-medium w-32">Thành tiền</th>
+            <th className="w-10 px-2 py-2 text-left font-medium">STT</th>
+            <th className="relative px-2 py-2 text-left font-medium" style={{ width: widths.tenHangHoa }}>
+              Tên hàng hóa / dịch vụ<ResizeHandle colKey="tenHangHoa" />
+            </th>
+            <th className="relative px-2 py-2 text-left font-medium" style={{ width: widths.donViTinh }}>
+              Đơn vị<ResizeHandle colKey="donViTinh" />
+            </th>
+            <th className="relative px-2 py-2 text-left font-medium" style={{ width: widths.soLuong }}>
+              Số lượng<ResizeHandle colKey="soLuong" />
+            </th>
+            <th className="relative px-2 py-2 text-left font-medium" style={{ width: widths.donGia }}>
+              Đơn giá<ResizeHandle colKey="donGia" />
+            </th>
+            <th className="w-32 px-2 py-2 text-right font-medium">Thành tiền</th>
             <th className="w-8"></th>
           </tr>
         </thead>
         <tbody>
-          {list.map((row) => (
+          {list.map((row, idx) => (
             <tr key={row.id} className="border-t border-stone-200">
-              <td className="p-1">
+              <td className="px-2 py-1 text-stone-500">{idx + 1}</td>
+              <td className="p-1" style={{ width: widths.tenHangHoa }}>
                 <input className="w-full rounded border border-stone-300 px-2 py-1 text-sm"
                   value={row.tenHangHoa} onChange={(e) => updateRow(row.id, 'tenHangHoa', e.target.value)} />
               </td>
-              <td className="p-1">
+              <td className="p-1" style={{ width: widths.donViTinh }}>
                 <input className="w-full rounded border border-stone-300 px-2 py-1 text-sm"
                   value={row.donViTinh} onChange={(e) => updateRow(row.id, 'donViTinh', e.target.value)} />
               </td>
-              <td className="p-1">
+              <td className="p-1" style={{ width: widths.soLuong }}>
                 <input type="number" className="w-full rounded border border-stone-300 px-2 py-1 text-sm"
                   value={row.soLuong} onChange={(e) => updateRow(row.id, 'soLuong', e.target.value)} />
               </td>
-              <td className="p-1">
+              <td className="p-1" style={{ width: widths.donGia }}>
                 <input type="number" className="w-full rounded border border-stone-300 px-2 py-1 text-sm"
                   value={row.donGia} onChange={(e) => updateRow(row.id, 'donGia', e.target.value)} />
               </td>
@@ -313,7 +361,7 @@ function ItemsEditor({ rows, onChange }) {
         </tbody>
         <tfoot>
           <tr className="border-t border-stone-300 bg-stone-50">
-            <td colSpan={4} className="px-2 py-2 text-right font-medium text-stone-600">Tổng cộng</td>
+            <td colSpan={5} className="px-2 py-2 text-right font-medium text-stone-600">Tổng cộng</td>
             <td className="px-2 py-2 text-right font-semibold text-teal-900">{formatVND(total)}</td>
             <td></td>
           </tr>
@@ -332,9 +380,22 @@ function ItemsEditor({ rows, onChange }) {
 function TableFieldEditor({ columns, rows, onChange }) {
   const cols = columns || [];
   const list = rows && rows.length ? rows : [emptyTableRow(cols)];
+  const [widths, setWidths] = useState(() => Object.fromEntries(cols.map((c) => [c.key, 140])));
+  const dragRef = useRef(null);
+
+  useEffect(() => {
+    setWidths((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      cols.forEach((c) => { if (next[c.key] === undefined) { next[c.key] = 140; changed = true; } });
+      return changed ? next : prev;
+    });
+  }, [cols]);
 
   function updateCell(rowId, key, val) {
     onChange(list.map((r) => (r.id === rowId ? { ...r, [key]: val } : r)));
+    const suggested = Math.min(420, Math.max(60, String(val).length * 8 + 32));
+    setWidths((prev) => (suggested > (prev[key] || 0) ? { ...prev, [key]: suggested } : prev));
   }
   function addRow() {
     onChange([...list, emptyTableRow(cols)]);
@@ -343,20 +404,48 @@ function TableFieldEditor({ columns, rows, onChange }) {
     onChange(list.length > 1 ? list.filter((r) => r.id !== rowId) : list);
   }
 
+  function startResize(e, key) {
+    e.preventDefault();
+    dragRef.current = { key, startX: e.clientX, startWidth: widths[key] || 140 };
+    window.addEventListener('mousemove', onDragMove);
+    window.addEventListener('mouseup', onDragEnd);
+  }
+  function onDragMove(e) {
+    if (!dragRef.current) return;
+    const { key, startX, startWidth } = dragRef.current;
+    const next = Math.max(50, startWidth + (e.clientX - startX));
+    setWidths((prev) => ({ ...prev, [key]: next }));
+  }
+  function onDragEnd() {
+    dragRef.current = null;
+    window.removeEventListener('mousemove', onDragMove);
+    window.removeEventListener('mouseup', onDragEnd);
+  }
+
   return (
-    <div className="rounded-md border border-stone-300 overflow-hidden">
-      <table className="w-full text-sm">
+    <div className="overflow-x-auto rounded-md border border-stone-300">
+      <table className="text-sm" style={{ tableLayout: 'fixed', width: 'max-content', minWidth: '100%' }}>
         <thead className="bg-stone-100 text-stone-600">
           <tr>
-            {cols.map((c) => <th key={c.key} className="px-2 py-2 text-left font-medium">{c.label}</th>)}
+            <th className="w-10 px-2 py-2 text-left font-medium">STT</th>
+            {cols.map((c) => (
+              <th key={c.key} className="relative px-2 py-2 text-left font-medium" style={{ width: widths[c.key] || 140 }}>
+                {c.label}{c.required && <span className="text-rose-500"> *</span>}
+                <span
+                  onMouseDown={(e) => startResize(e, c.key)}
+                  className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none hover:bg-teal-300/60"
+                />
+              </th>
+            ))}
             <th className="w-8"></th>
           </tr>
         </thead>
         <tbody>
-          {list.map((row) => (
+          {list.map((row, idx) => (
             <tr key={row.id} className="border-t border-stone-200">
+              <td className="px-2 py-1 text-stone-500">{idx + 1}</td>
               {cols.map((c) => (
-                <td key={c.key} className="p-1">
+                <td key={c.key} className="p-1" style={{ width: widths[c.key] || 140 }}>
                   <input
                     type={c.type === 'number' ? 'number' : c.type === 'date' ? 'date' : 'text'}
                     className="w-full rounded border border-stone-300 px-2 py-1 text-sm"
@@ -534,9 +623,12 @@ export default function App() {
   const [projectTypes, setProjectTypes] = useState([]);
   const [permissions, setPermissions] = useState([]);    // [{ projectId, userId, docType, can_view, can_add, can_edit, can_lock, can_delete }]
   const [importTemplates, setImportTemplates] = useState({}); // { [docType]: { column_mapping } }
-  const [customFields, setCustomFields] = useState({ bao_gia: [], ho_so_yeu_cau: [], bien_ban: [], hop_dong: [] });
-  const [hiddenFields, setHiddenFields] = useState({ bao_gia: [], ho_so_yeu_cau: [], bien_ban: [], hop_dong: [] });
-  const [fieldOverrides, setFieldOverrides] = useState({ bao_gia: [], ho_so_yeu_cau: [], bien_ban: [], hop_dong: [] });
+  const [customFields, setCustomFields] = useState({ bao_gia: [], ho_so_yeu_cau: [], bien_ban: [], hop_dong: [], project: [], goi_thau: [] });
+  const [hiddenFields, setHiddenFields] = useState({ bao_gia: [], ho_so_yeu_cau: [], bien_ban: [], hop_dong: [], project: [], goi_thau: [] });
+  const [fieldOverrides, setFieldOverrides] = useState({ bao_gia: [], ho_so_yeu_cau: [], bien_ban: [], hop_dong: [], project: [], goi_thau: [] });
+  const [projectSteps, setProjectSteps] = useState({}); // { [projectId]: [{ id, docType, sortOrder, completed }] }
+  const [goiThauList, setGoiThauList] = useState({}); // { [projectId]: [{ id, projectId, maGoiThau, tenGoiThau, data, createdAt }] }
+  const [templateFieldMode, setTemplateFieldModeState] = useState({}); // { [docType]: { [projectTypeId]: 'extend' | 'replace' } }
   const [printTemplates, setPrintTemplates] = useState({}); // { [docType]: { layout: [...] } }
   const [docxTemplates, setDocxTemplates] = useState({}); // { [docType]: { storage_path } }
   const [myAssignments, setMyAssignments] = useState([]); // giao việc điền thông tin (của tôi hoặc do tôi giao)
@@ -596,10 +688,10 @@ export default function App() {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      const [profileRes, profilesRes, projectsRes, permsRes, typesRes, auditRes, templatesRes, customFieldsRes, printTemplatesRes, hiddenFieldsRes, fieldOverridesRes, docxTemplatesRes, assignmentsRes] = await Promise.all([
+      const [profileRes, profilesRes, projectsRes, permsRes, typesRes, auditRes, templatesRes, customFieldsRes, printTemplatesRes, hiddenFieldsRes, fieldOverridesRes, docxTemplatesRes, assignmentsRes, projectStepsRes, goiThauRes, templateModeRes] = await Promise.all([
         supabase.from('profiles').select('id, full_name, is_admin').eq('id', session.user.id).single(),
         supabase.from('profiles').select('id, full_name, is_admin').order('full_name'),
-        supabase.from('projects').select('id, ten, ma_du_an, mo_ta, type_id, created_at').order('created_at'),
+        supabase.from('projects').select('id, ten, ma_du_an, mo_ta, type_id, data, created_at').order('created_at'),
         supabase.from('project_permissions').select('project_id, user_id, doc_type, can_view, can_add, can_edit, can_lock, can_delete'),
         supabase.from('project_types').select('id, ten').order('ten'),
         supabase.from('audit_log').select('id, actor_name, action, summary, created_at').order('created_at', { ascending: false }).limit(300),
@@ -610,6 +702,9 @@ export default function App() {
         supabase.from('field_overrides').select('doc_type, field_name, label, field_type, required, options, project_type_id'),
         supabase.from('docx_templates').select('doc_type, project_type_id, storage_path'),
         supabase.from('document_assignments').select('id, document_id, doc_type, assigned_to, assigned_by, field_keys, status, created_at, completed_at'),
+        supabase.from('project_document_types').select('id, project_id, doc_type, sort_order, completed'),
+        supabase.from('goi_thau').select('id, project_id, ma_goi_thau, ten_goi_thau, data, created_at'),
+        supabase.from('template_field_mode').select('doc_type, project_type_id, mode'),
       ]);
 
       const nextRecords = {};
@@ -633,15 +728,35 @@ export default function App() {
       setProjects((projectsRes.data || []).map((p) => ({
         id: p.id, ten: p.ten, maDuAn: p.ma_du_an, moTa: p.mo_ta,
         typeId: p.type_id, typeName: p.type_id ? (typesById[p.type_id] || null) : null,
+        data: p.data || {},
         createdAt: p.created_at,
       })));
+      const stepsByProject = {};
+      (projectStepsRes.data || []).forEach((s) => {
+        if (!stepsByProject[s.project_id]) stepsByProject[s.project_id] = [];
+        stepsByProject[s.project_id].push({ id: s.id, docType: s.doc_type, sortOrder: s.sort_order, completed: s.completed });
+      });
+      Object.values(stepsByProject).forEach((list) => list.sort((a, b) => a.sortOrder - b.sortOrder));
+      setProjectSteps(stepsByProject);
+      const goiThauByProject = {};
+      (goiThauRes.data || []).forEach((g) => {
+        if (!goiThauByProject[g.project_id]) goiThauByProject[g.project_id] = [];
+        goiThauByProject[g.project_id].push({ id: g.id, projectId: g.project_id, maGoiThau: g.ma_goi_thau, tenGoiThau: g.ten_goi_thau, data: g.data || {}, createdAt: g.created_at });
+      });
+      setGoiThauList(goiThauByProject);
+      const modeByType = {};
+      (templateModeRes.data || []).forEach((m) => {
+        if (!modeByType[m.doc_type]) modeByType[m.doc_type] = {};
+        modeByType[m.doc_type][m.project_type_id] = m.mode;
+      });
+      setTemplateFieldModeState(modeByType);
       setPermissions((permsRes.data || []).map((p) => ({
         projectId: p.project_id, userId: p.user_id, docType: p.doc_type,
         can_view: p.can_view, can_add: p.can_add, can_edit: p.can_edit, can_lock: p.can_lock, can_delete: p.can_delete,
       })));
       setAuditLog((auditRes.data || []).map((l) => ({ id: l.id, time: l.created_at, actor: l.actor_name, action: l.action, summary: l.summary })));
       setImportTemplates(Object.fromEntries((templatesRes.data || []).map((t) => [t.type, { column_mapping: t.column_mapping || {} }])));
-      const cfByType = { bao_gia: [], ho_so_yeu_cau: [], bien_ban: [], hop_dong: [] };
+      const cfByType = { bao_gia: [], ho_so_yeu_cau: [], bien_ban: [], hop_dong: [], project: [], goi_thau: [] };
       (customFieldsRes.data || []).forEach((f) => { if (cfByType[f.doc_type]) cfByType[f.doc_type].push(f); });
       setCustomFields(cfByType);
       const ptByType = {};
@@ -650,10 +765,10 @@ export default function App() {
         ptByType[t.doc_type][t.project_type_id] = { layout: t.layout || [] };
       });
       setPrintTemplates(ptByType);
-      const hiddenByType = { bao_gia: [], ho_so_yeu_cau: [], bien_ban: [], hop_dong: [] };
+      const hiddenByType = { bao_gia: [], ho_so_yeu_cau: [], bien_ban: [], hop_dong: [], project: [], goi_thau: [] };
       (hiddenFieldsRes.data || []).forEach((h) => { if (hiddenByType[h.doc_type]) hiddenByType[h.doc_type].push(h); });
       setHiddenFields(hiddenByType);
-      const overridesByType = { bao_gia: [], ho_so_yeu_cau: [], bien_ban: [], hop_dong: [] };
+      const overridesByType = { bao_gia: [], ho_so_yeu_cau: [], bien_ban: [], hop_dong: [], project: [], goi_thau: [] };
       (fieldOverridesRes.data || []).forEach((o) => { if (overridesByType[o.doc_type]) overridesByType[o.doc_type].push(o); });
       setFieldOverrides(overridesByType);
       const dtByType = {};
@@ -700,7 +815,24 @@ export default function App() {
 
   // Trả về schema hiệu lực cho 1 loại hồ sơ, tùy theo Loại dự án (nếu có mẫu riêng cho loại đó)
   function getSchema(docType, projectTypeId) {
+    const baseSchema = docType === 'project' ? PROJECT_BASE_SCHEMA : docType === 'goi_thau' ? GOI_THAU_BASE_SCHEMA : DOC_TYPES[docType];
     const typeKey = projectTypeId || GENERIC_TYPE_ID;
+    const mode = (templateFieldMode[docType] && templateFieldMode[docType][typeKey]) || 'extend';
+
+    // "Tự thiết kế lại từ đầu": bỏ hẳn trường có sẵn và trường của mẫu chung,
+    // chỉ dùng đúng những trường đã khai báo riêng cho loại dự án này.
+    if (typeKey !== GENERIC_TYPE_ID && mode === 'replace') {
+      const specificOnly = (customFields[docType] || [])
+        .filter((f) => f.project_type_id === typeKey)
+        .sort((a, b) => a.sort_order - b.sort_order)
+        .map((f) => ({
+          name: f.field_key, label: f.label, type: f.field_type,
+          required: f.required, options: f.options || [], columns: f.columns || null,
+          wide: f.field_type === 'table', __custom: true, __id: f.id,
+        }));
+      return { ...baseSchema, fields: specificOnly };
+    }
+
     const hiddenSet = new Set(
       (hiddenFields[docType] || [])
         .filter((h) => h.project_type_id === GENERIC_TYPE_ID || h.project_type_id === typeKey)
@@ -714,7 +846,7 @@ export default function App() {
       .filter((o) => o.project_type_id === typeKey && typeKey !== GENERIC_TYPE_ID)
       .forEach((o) => { overridesMap[o.field_name] = o; });
 
-    const visibleBuiltIn = DOC_TYPES[docType].fields
+    const visibleBuiltIn = baseSchema.fields
       .filter((f) => !hiddenSet.has(f.name))
       .map((f) => {
         const o = overridesMap[f.name];
@@ -738,7 +870,16 @@ export default function App() {
         wide: f.field_type === 'table', __custom: true, __id: f.id,
       }));
 
-    return { ...DOC_TYPES[docType], fields: [...visibleBuiltIn, ...extra] };
+    return { ...baseSchema, fields: [...visibleBuiltIn, ...extra] };
+  }
+
+  async function setTemplateFieldMode(docType, projectTypeId, mode) {
+    const { error } = await supabase
+      .from('template_field_mode')
+      .upsert({ doc_type: docType, project_type_id: projectTypeId, mode, updated_by: myId, updated_at: new Date().toISOString() }, { onConflict: 'doc_type,project_type_id' });
+    if (error) { showToast('Không thể cập nhật chế độ mẫu: ' + error.message, 'error'); return; }
+    setTemplateFieldModeState((prev) => ({ ...prev, [docType]: { ...(prev[docType] || {}), [projectTypeId]: mode } }));
+    showToast(mode === 'replace' ? 'Đã chuyển sang tự thiết kế lại từ đầu cho loại dự án này.' : 'Đã chuyển về kế thừa mẫu chung.');
   }
 
   function getPerm(projectId, userId, docType) {
@@ -786,12 +927,77 @@ export default function App() {
     if (!rec.duAnId) return false;
     return getPerm(rec.duAnId, myId, docType).lock;
   }
+
+  // Kiểm tra loại hồ sơ này đã "tới lượt" trong dự án chưa (dựa trên các bước đã cấu hình + thứ tự).
+  // Nếu dự án chưa cấu hình bước nào, hoặc loại hồ sơ này không nằm trong danh sách bước, coi như không khóa.
+  function isDocTypeUnlockedForProject(projectId, docType) {
+    const steps = projectSteps[projectId];
+    if (!steps || steps.length === 0) return true;
+    const idx = steps.findIndex((s) => s.docType === docType);
+    if (idx === -1) return true;
+    return steps.slice(0, idx).every((s) => s.completed);
+  }
+
   function canAddInProject(projectId, docType) {
     if (amAdmin) return true;
+    if (!isDocTypeUnlockedForProject(projectId, docType)) return false;
     return getPerm(projectId, myId, docType).add;
   }
   function assignableProjectsFor(docType, action) {
-    return projects.filter((p) => amAdmin || getPerm(p.id, myId, docType)[action]);
+    return projects.filter((p) => {
+      if (amAdmin) return true;
+      if (action === 'add' && !isDocTypeUnlockedForProject(p.id, docType)) return false;
+      return getPerm(p.id, myId, docType)[action];
+    });
+  }
+
+  async function saveProjectSteps(projectId, stepsList) {
+    // stepsList: [{ docType }] theo đúng thứ tự mong muốn — xóa cấu hình cũ, ghi lại từ đầu
+    const { error: delError } = await supabase.from('project_document_types').delete().eq('project_id', projectId);
+    if (delError) { showToast('Không thể cập nhật các bước: ' + delError.message, 'error'); return; }
+    if (stepsList.length === 0) {
+      setProjectSteps((prev) => ({ ...prev, [projectId]: [] }));
+      return;
+    }
+    const rows = stepsList.map((s, idx) => ({ project_id: projectId, doc_type: s.docType, sort_order: idx }));
+    const { data, error } = await supabase.from('project_document_types').insert(rows).select();
+    if (error) { showToast('Không thể lưu các bước: ' + error.message, 'error'); return; }
+    setProjectSteps((prev) => ({
+      ...prev,
+      [projectId]: data.map((s) => ({ id: s.id, docType: s.doc_type, sortOrder: s.sort_order, completed: s.completed })).sort((a, b) => a.sortOrder - b.sortOrder),
+    }));
+    showToast('Đã cập nhật các bước cho dự án.');
+  }
+
+  async function toggleStepCompleted(projectId, docType, completed) {
+    const { error } = await supabase.from('project_document_types').update({ completed }).eq('project_id', projectId).eq('doc_type', docType);
+    if (error) { showToast('Không thể cập nhật trạng thái bước: ' + error.message, 'error'); return; }
+    setProjectSteps((prev) => ({
+      ...prev,
+      [projectId]: (prev[projectId] || []).map((s) => (s.docType === docType ? { ...s, completed } : s)),
+    }));
+    showToast(completed ? 'Đã đánh dấu hoàn thành bước này.' : 'Đã bỏ đánh dấu hoàn thành.');
+  }
+
+  /* ---------------- gói thầu (mã tự động sinh theo dự án) ---------------- */
+  async function createGoiThau(projectId, tenGoiThau, extraData) {
+    const { data, error } = await supabase
+      .from('goi_thau')
+      .insert({ project_id: projectId, ma_goi_thau: null, ten_goi_thau: tenGoiThau, data: extraData || {}, created_by: myId })
+      .select()
+      .single();
+    if (error) { showToast('Không thể tạo gói thầu: ' + error.message, 'error'); return null; }
+    const newPkg = { id: data.id, projectId: data.project_id, maGoiThau: data.ma_goi_thau, tenGoiThau: data.ten_goi_thau, data: data.data || {}, createdAt: data.created_at };
+    setGoiThauList((prev) => ({ ...prev, [projectId]: [...(prev[projectId] || []), newPkg] }));
+    showToast(`Đã tạo gói thầu ${newPkg.maGoiThau}.`);
+    appendLog('create_goi_thau', `${myProfile.full_name} đã tạo gói thầu "${newPkg.maGoiThau} — ${tenGoiThau}".`);
+    return newPkg;
+  }
+  async function deleteGoiThau(id, projectId) {
+    const { error } = await supabase.from('goi_thau').delete().eq('id', id);
+    if (error) { showToast('Không thể xóa gói thầu (có thể đang được hồ sơ nào đó dùng).', 'error'); return; }
+    setGoiThauList((prev) => ({ ...prev, [projectId]: (prev[projectId] || []).filter((g) => g.id !== id) }));
+    showToast('Đã xóa gói thầu.');
   }
 
   const accessibleProjects = useMemo(
@@ -854,8 +1060,21 @@ export default function App() {
     const schema = getSchema(activeType, targetProject?.typeId);
     const errors = {};
     if (!formData.duAnId) errors.duAnId = true;
+    if (!formData.goiThauId) errors.goiThauId = true;
     schema.fields.forEach((f) => {
       if (f.required && !String(formData[f.name] || '').trim()) errors[f.name] = true;
+      if (f.type === 'table' && Array.isArray(f.options)) {
+        const requiredCols = f.options.filter((c) => c.required);
+        if (requiredCols.length > 0) {
+          const rows = formData[f.name] || [];
+          const hasMissing = rows.some((row) => {
+            const rowHasAnyValue = f.options.some((c) => String(row[c.key] || '').trim());
+            if (!rowHasAnyValue) return false; // bỏ qua dòng trống hoàn toàn
+            return requiredCols.some((c) => !String(row[c.key] || '').trim());
+          });
+          if (hasMissing) errors[f.name] = true;
+        }
+      }
     });
     const allowed = editingId ? canEditDoc({ duAnId: formData.duAnId, locked: false }, activeType) : canAddInProject(formData.duAnId, activeType);
     if (!allowed) {
@@ -952,6 +1171,24 @@ export default function App() {
 
   // rows: [{ duAnId, ...các trường dữ liệu }] — dùng khi nhập hàng loạt từ Excel
   async function bulkImportDocuments(typeKey, rows) {
+    // Cache cục bộ trong lần nhập này để tránh tạo trùng gói thầu mới nếu nhiều dòng
+    // cùng nhắc tới 1 tên gói thầu chưa từng có (không phụ thuộc state React vốn cập nhật bất đồng bộ).
+    const localPackageCache = {}; // { [projectId]: { [tenGoiThauLowerCase]: package } }
+    function seedCache(projectId) {
+      if (!localPackageCache[projectId]) {
+        localPackageCache[projectId] = {};
+        (goiThauList[projectId] || []).forEach((g) => { localPackageCache[projectId][g.tenGoiThau.trim().toLowerCase()] = g; });
+      }
+    }
+    async function resolveOrCreatePackage(projectId, tenGoiThauText) {
+      seedCache(projectId);
+      const key = tenGoiThauText.trim().toLowerCase();
+      if (localPackageCache[projectId][key]) return localPackageCache[projectId][key];
+      const pkg = await createGoiThau(projectId, tenGoiThauText.trim(), {});
+      if (pkg) localPackageCache[projectId][key] = pkg;
+      return pkg;
+    }
+
     const toInsert = [];
     const results = [];
     for (const row of rows) {
@@ -959,6 +1196,14 @@ export default function App() {
       if (!canAddInProject(duAnId, typeKey)) {
         results.push({ ok: false, error: 'Không có quyền "Thêm" ở dự án này' });
         continue;
+      }
+      if (dataFields.tenGoiThau) {
+        const pkg = await resolveOrCreatePackage(duAnId, dataFields.tenGoiThau);
+        if (pkg) {
+          dataFields.goiThauId = pkg.id;
+          dataFields.maGoiThau = pkg.maGoiThau;
+          dataFields.tenGoiThau = pkg.tenGoiThau;
+        }
       }
       toInsert.push({ type: typeKey, du_an_id: duAnId, data: dataFields, created_by: myId });
     }
@@ -1200,23 +1445,28 @@ export default function App() {
   }
 
   /* ---------------- projects (admin only) ---------------- */
-  async function createProject(ten, maDuAn, moTa, typeId) {
+  async function createProject(ten, moTa, typeId, projectData, stepsList) {
     const { data, error } = await supabase
       .from('projects')
-      .insert({ ten, ma_du_an: maDuAn, mo_ta: moTa, type_id: typeId || null, created_by: myId })
+      .insert({ ten, ma_du_an: null, mo_ta: moTa, type_id: typeId || null, data: projectData || {}, created_by: myId })
       .select()
       .single();
     if (error) { showToast('Không thể tạo dự án: ' + error.message, 'error'); return; }
     const typeName = typeId ? (projectTypes.find((t) => t.id === typeId)?.ten || null) : null;
-    setProjects((prev) => [...prev, { id: data.id, ten: data.ten, maDuAn: data.ma_du_an, moTa: data.mo_ta, typeId: data.type_id, typeName, createdAt: data.created_at }]);
-    showToast('Đã tạo dự án.');
-    appendLog('create_project', `${myProfile.full_name} đã tạo dự án "${ten}".`);
+    setProjects((prev) => [...prev, { id: data.id, ten: data.ten, maDuAn: data.ma_du_an, moTa: data.mo_ta, typeId: data.type_id, typeName, data: data.data || {}, createdAt: data.created_at }]);
+    if (stepsList && stepsList.length > 0) {
+      await saveProjectSteps(data.id, stepsList);
+    }
+    showToast(`Đã tạo dự án với mã ${data.ma_du_an}.`);
+    appendLog('create_project', `${myProfile.full_name} đã tạo dự án "${ten}" (mã ${data.ma_du_an}).`);
   }
   async function deleteProject(project) {
     const { error } = await supabase.from('projects').delete().eq('id', project.id);
     if (error) { showToast('Không thể xóa dự án.', 'error'); return; }
     setProjects((prev) => prev.filter((p) => p.id !== project.id));
     setPermissions((prev) => prev.filter((p) => p.projectId !== project.id));
+    setProjectSteps((prev) => { const next = { ...prev }; delete next[project.id]; return next; });
+    setGoiThauList((prev) => { const next = { ...prev }; delete next[project.id]; return next; });
     setRecords((prev) => {
       const next = {};
       for (const k of TYPE_ORDER) next[k] = (prev[k] || []).map((r) => (r.duAnId === project.id ? { ...r, duAnId: null } : r));
@@ -1446,6 +1696,7 @@ export default function App() {
             const Icon = t.icon;
             const isActive = (view === 'list' || view === 'form' || view === 'detail') && activeType === key;
             const count = (records[key] || []).filter((r) => canViewRecord(r, key) && (projectFilter === 'all' || r.duAnId === projectFilter)).length;
+            const stepLocked = projectFilter !== 'all' && !amAdmin && !isDocTypeUnlockedForProject(projectFilter, key);
             return (
               <button
                 key={key}
@@ -1457,6 +1708,7 @@ export default function App() {
                 <span className="flex items-center gap-2">
                   <Icon className="h-4 w-4" />
                   {t.label}
+                  {stepLocked && <Lock className="h-3 w-3 text-teal-400/70" />}
                 </span>
                 <span className="rounded bg-teal-950/60 px-1.5 py-0.5 text-xs text-teal-300">{count}</span>
               </button>
@@ -1543,6 +1795,9 @@ export default function App() {
             canEditDoc={(r) => canEditDoc(r, activeType)}
             canDeleteDoc={(r) => canDeleteDoc(r, activeType)}
             canLockDoc={(r) => canLockDoc(r, activeType)}
+            currentStep={projectFilter !== 'all' ? (projectSteps[projectFilter] || []).find((s) => s.docType === activeType) : null}
+            canToggleStep={projectFilter !== 'all' && (amAdmin || getPerm(projectFilter, myId, activeType).add || getPerm(projectFilter, myId, activeType).edit)}
+            onToggleStepCompleted={(completed) => toggleStepCompleted(projectFilter, activeType, completed)}
           />
         )}
 
@@ -1554,6 +1809,8 @@ export default function App() {
             editing={!!editingId}
             saving={saving}
             projects={editingId ? assignableProjectsFor(activeType, 'edit') : assignableProjectsFor(activeType, 'add')}
+            packages={goiThauList[formData.duAnId] || []}
+            onCreatePackage={(ten) => createGoiThau(formData.duAnId, ten, {})}
             onChange={updateField}
             onSubmit={handleSubmit}
             onCancel={() => setView(editingId ? 'detail' : 'list')}
@@ -1604,10 +1861,18 @@ export default function App() {
           <ProjectsView
             projects={projects}
             projectTypes={projectTypes}
+            projectSchema={getSchema('project', GENERIC_TYPE_ID)}
+            goiThauSchema={getSchema('goi_thau', GENERIC_TYPE_ID)}
+            projectSteps={projectSteps}
+            goiThauList={goiThauList}
             onCreateProject={createProject}
             onDeleteProject={deleteProject}
             onCreateProjectType={createProjectType}
             onDeleteProjectType={deleteProjectType}
+            onSaveProjectSteps={saveProjectSteps}
+            onToggleStepCompleted={toggleStepCompleted}
+            onCreateGoiThau={createGoiThau}
+            onDeleteGoiThau={deleteGoiThau}
             showToast={showToast}
           />
         )}
@@ -1638,6 +1903,8 @@ export default function App() {
             fieldOverrides={fieldOverrides}
             printTemplates={printTemplates}
             docxTemplates={docxTemplates}
+            templateFieldMode={templateFieldMode}
+            onSetTemplateFieldMode={setTemplateFieldMode}
             onUploadDocxTemplate={uploadDocxTemplate}
             onCreateField={createCustomField}
             onDeleteField={deleteCustomField}
@@ -1760,7 +2027,7 @@ function Dashboard({ records, projects, allProjectsEmpty, amAdmin, projectFilter
 function ListView({
   schema, list, projects, assignableProjects, search, onSearch, projectFilter, onProjectFilter, accessibleProjects,
   onNew, onView, onEdit, onDelete, onToggleLock, onBulkImport, savedTemplate, onSaveTemplate,
-  confirmingDelete, canEditDoc, canDeleteDoc, canLockDoc,
+  confirmingDelete, canEditDoc, canDeleteDoc, canLockDoc, currentStep, canToggleStep, onToggleStepCompleted,
 }) {
   const [showImport, setShowImport] = useState(false);
 
@@ -1785,6 +2052,25 @@ function ListView({
           </button>
         </div>
       </div>
+
+      {currentStep && (
+        <div className={`mt-3 flex items-center justify-between rounded-md px-3 py-2 text-sm ${currentStep.completed ? 'bg-teal-50 text-teal-800' : 'bg-amber-50 text-amber-800'}`}>
+          <span className="flex items-center gap-1.5">
+            {currentStep.completed ? <CheckCircle2 className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
+            {currentStep.completed
+              ? 'Bước này đã được đánh dấu hoàn thành cho dự án đang chọn.'
+              : 'Bước này thuộc quy trình có thứ tự của dự án đang chọn — chưa hoàn thành.'}
+          </span>
+          {canToggleStep && (
+            <button
+              onClick={() => onToggleStepCompleted(!currentStep.completed)}
+              className={`rounded-md border px-3 py-1 text-xs ${currentStep.completed ? 'border-stone-300 text-stone-600 hover:bg-white' : 'border-teal-700 bg-teal-700 text-white hover:bg-teal-800'}`}
+            >
+              {currentStep.completed ? 'Bỏ đánh dấu' : 'Đánh dấu hoàn thành'}
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="mt-4 flex gap-3">
         <div className="relative flex-1">
@@ -2089,6 +2375,11 @@ function ExcelImportModal({ schema, assignableProjects, savedTemplate, onSaveTem
             <p className="mt-2 text-sm text-stone-500">
               Xác nhận mỗi cột trong file của bạn tương ứng với trường nào. Hệ thống đã tự đoán sẵn — bạn chỉnh lại nếu cần.
             </p>
+            {schema.fields.some((f) => f.name === 'tenGoiThau') && (
+              <p className="mt-1 text-xs text-teal-700">
+                Cột ứng với "Tên gói thầu" sẽ được tự động khớp với gói thầu đã có trong dự án (theo đúng tên), hoặc tự tạo gói thầu mới nếu chưa có — mã gói thầu vẫn do hệ thống tự cấp.
+              </p>
+            )}
             <div className="mt-3 max-h-72 overflow-y-auto rounded-md border border-stone-200">
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-stone-50 text-stone-500">
@@ -2195,9 +2486,9 @@ function ExcelImportModal({ schema, assignableProjects, savedTemplate, onSaveTem
 /* Form view                                                            */
 /* ------------------------------------------------------------------ */
 
-function FormView({ schema, formData, errors, editing, saving, projects, onChange, onSubmit, onCancel }) {
+function FormView({ schema, formData, errors, editing, saving, projects, packages, onCreatePackage, onChange, onSubmit, onCancel }) {
   return (
-    <div className="mx-auto max-w-3xl px-8 py-8">
+    <div className="w-full px-8 py-8">
       <button onClick={onCancel} className="mb-4 flex items-center gap-1 text-sm text-stone-500 hover:text-stone-800">
         <ChevronLeft className="h-4 w-4" /> Quay lại
       </button>
@@ -2207,23 +2498,44 @@ function FormView({ schema, formData, errors, editing, saving, projects, onChang
       </div>
 
       <form onSubmit={onSubmit} className="mt-6 rounded-lg border border-stone-200 bg-white p-6">
-        <div className="grid grid-cols-2 gap-x-4 gap-y-4">
-          <div className="col-span-2">
+        <div className="grid grid-cols-3 gap-x-4 gap-y-4">
+          <div className="col-span-3">
             <label className="mb-1 block text-xs font-medium text-stone-600">
               Dự án<span className="text-rose-600"> *</span>
             </label>
             <ProjectSelect projects={projects} value={formData.duAnId} onChange={(v) => onChange('duAnId', v)} error={errors.duAnId} />
           </div>
 
-          {schema.fields.map((f) => (
-            <div key={f.name} className={f.wide || f.type === 'items' || f.type === 'table' ? 'col-span-2' : 'col-span-1'}>
+          <div className="col-span-3">
+            <label className="mb-1 block text-xs font-medium text-stone-600">
+              Gói thầu<span className="text-rose-600"> *</span>
+            </label>
+            <PackageSelectField
+              packages={packages}
+              disabled={!formData.duAnId}
+              value={formData.goiThauId}
+              error={errors.goiThauId}
+              onChange={(pkg) => {
+                onChange('goiThauId', pkg.id);
+                onChange('maGoiThau', pkg.maGoiThau);
+                onChange('tenGoiThau', pkg.tenGoiThau);
+              }}
+              onCreatePackage={onCreatePackage}
+            />
+          </div>
+
+          {schema.fields.filter((f) => f.name !== 'tenGoiThau' && f.name !== 'maGoiThau').map((f) => (
+            <div key={f.name} className={f.wide || f.type === 'items' || f.type === 'table' ? 'col-span-3' : 'col-span-1'}>
               <label className="mb-1 block text-xs font-medium text-stone-600">
                 {f.label}{f.required && <span className="text-rose-600"> *</span>}
               </label>
               {f.type === 'items' ? (
                 <ItemsEditor rows={formData[f.name]} onChange={(rows) => onChange(f.name, rows)} />
               ) : f.type === 'table' ? (
-                <TableFieldEditor columns={f.options} rows={formData[f.name]} onChange={(rows) => onChange(f.name, rows)} />
+                <>
+                  <TableFieldEditor columns={f.options} rows={formData[f.name]} onChange={(rows) => onChange(f.name, rows)} />
+                  {errors[f.name] && <p className="mt-1 text-xs text-rose-600">Vui lòng điền đủ các cột bắt buộc (đánh dấu *) ở những dòng đã có dữ liệu.</p>}
+                </>
               ) : (
                 <Field field={f} value={formData[f.name] ?? ''} onChange={(v) => onChange(f.name, v)} error={errors[f.name]} />
               )}
@@ -2243,6 +2555,59 @@ function FormView({ schema, formData, errors, editing, saving, projects, onChang
         </div>
       </form>
     </div>
+  );
+}
+
+/* ---------------- Chọn Gói thầu (mã/tên tự điền theo gói đã chọn) ---------------- */
+
+function PackageSelectField({ packages, disabled, value, error, onChange, onCreatePackage }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [creating, setCreating] = useState(false);
+
+  async function handleQuickCreate() {
+    if (!newName.trim()) return;
+    setCreating(true);
+    const pkg = await onCreatePackage(newName.trim());
+    setCreating(false);
+    if (pkg) {
+      onChange(pkg);
+      setShowAdd(false);
+      setNewName('');
+    }
+  }
+
+  if (showAdd) {
+    return (
+      <div className="flex gap-2">
+        <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Tên gói thầu mới"
+          className="flex-1 rounded-md border border-stone-300 px-3 py-2 text-sm" autoFocus />
+        <button type="button" onClick={handleQuickCreate} disabled={creating}
+          className="rounded-md bg-teal-900 px-3 py-2 text-sm text-white hover:bg-teal-800 disabled:opacity-60">
+          {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Tạo'}
+        </button>
+        <button type="button" onClick={() => setShowAdd(false)} className="rounded-md border border-stone-300 px-3 py-2 text-sm text-stone-600 hover:bg-stone-50">
+          Hủy
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <select
+      disabled={disabled}
+      value={value || ''}
+      onChange={(e) => {
+        if (e.target.value === '__new__') { setShowAdd(true); return; }
+        const pkg = packages.find((p) => p.id === e.target.value);
+        if (pkg) onChange(pkg);
+      }}
+      className={`w-full rounded-md border bg-white px-3 py-2 text-sm text-stone-800 focus:outline-none focus:ring-2 focus:ring-teal-700/40 disabled:bg-stone-100 ${error ? 'border-rose-400' : 'border-stone-300'}`}
+    >
+      <option value="">{disabled ? '— Chọn dự án trước —' : '— Chọn gói thầu —'}</option>
+      {packages.map((p) => <option key={p.id} value={p.id}>{p.maGoiThau} — {p.tenGoiThau}</option>)}
+      {!disabled && <option value="__new__">+ Thêm gói thầu mới</option>}
+    </select>
   );
 }
 
@@ -2522,15 +2887,22 @@ function AuditLog({ entries }) {
 /* Trang "Dự án" — Loại dự án + Dự án (không còn quản lý thành viên ở đây) */
 /* ------------------------------------------------------------------ */
 
-function ProjectsView({ projects, projectTypes, onCreateProject, onDeleteProject, onCreateProjectType, onDeleteProjectType, showToast }) {
+function ProjectsView({
+  projects, projectTypes, projectSchema, goiThauSchema, projectSteps, goiThauList,
+  onCreateProject, onDeleteProject, onCreateProjectType, onDeleteProjectType,
+  onSaveProjectSteps, onToggleStepCompleted, onCreateGoiThau, onDeleteGoiThau, showToast,
+}) {
   const [newTypeName, setNewTypeName] = useState('');
   const [confirmDeleteType, setConfirmDeleteType] = useState(null);
 
   const [newProjectName, setNewProjectName] = useState('');
-  const [newProjectCode, setNewProjectCode] = useState('');
   const [newProjectDesc, setNewProjectDesc] = useState('');
   const [newProjectType, setNewProjectType] = useState('');
+  const [newProjectData, setNewProjectData] = useState({});
+  const [selectedSteps, setSelectedSteps] = useState([]); // [docType] theo đúng thứ tự
   const [confirmDeleteProject, setConfirmDeleteProject] = useState(null);
+  const [editingStepsFor, setEditingStepsFor] = useState(null); // projectId đang sửa cấu hình bước
+  const [managingPackagesFor, setManagingPackagesFor] = useState(null); // projectId đang quản lý danh sách gói thầu
 
   async function handleCreateType(e) {
     e.preventDefault();
@@ -2553,11 +2925,26 @@ function ProjectsView({ projects, projectTypes, onCreateProject, onDeleteProject
     setConfirmDeleteType(null);
   }
 
+  function toggleStepSelection(docType) {
+    setSelectedSteps((prev) => (prev.includes(docType) ? prev.filter((d) => d !== docType) : [...prev, docType]));
+  }
+  function moveStep(docType, direction) {
+    setSelectedSteps((prev) => {
+      const idx = prev.indexOf(docType);
+      const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+      if (swapIdx < 0 || swapIdx >= prev.length) return prev;
+      const next = [...prev];
+      [next[idx], next[swapIdx]] = [next[swapIdx], next[idx]];
+      return next;
+    });
+  }
+
   async function handleCreateProject(e) {
     e.preventDefault();
     if (!newProjectName.trim()) return;
-    await onCreateProject(newProjectName.trim(), newProjectCode.trim(), newProjectDesc.trim(), newProjectType || null);
-    setNewProjectName(''); setNewProjectCode(''); setNewProjectDesc(''); setNewProjectType('');
+    const stepsList = selectedSteps.map((docType) => ({ docType }));
+    await onCreateProject(newProjectName.trim(), newProjectDesc.trim(), newProjectType || null, newProjectData, stepsList);
+    setNewProjectName(''); setNewProjectDesc(''); setNewProjectType(''); setNewProjectData({}); setSelectedSteps([]);
   }
   async function handleDeleteProject(p) {
     if (confirmDeleteProject !== p.id) {
@@ -2605,19 +2992,68 @@ function ProjectsView({ projects, projectTypes, onCreateProject, onDeleteProject
         <div className="flex items-center gap-2 text-sm font-medium text-stone-700">
           <FolderKanban className="h-4 w-4 text-teal-800" /> Tạo dự án mới
         </div>
-        <form onSubmit={handleCreateProject} className="mt-3 grid grid-cols-2 gap-3">
-          <input value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} placeholder="Tên dự án *"
-            className="col-span-2 rounded-md border border-stone-300 px-3 py-1.5 text-sm sm:col-span-1" />
-          <input value={newProjectCode} onChange={(e) => setNewProjectCode(e.target.value)} placeholder="Mã dự án"
-            className="rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
-          <select value={newProjectType} onChange={(e) => setNewProjectType(e.target.value)}
-            className="col-span-2 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm sm:col-span-1">
-            <option value="">— Chọn loại dự án (tùy chọn) —</option>
-            {projectTypes.map((t) => <option key={t.id} value={t.id}>{t.ten}</option>)}
-          </select>
-          <input value={newProjectDesc} onChange={(e) => setNewProjectDesc(e.target.value)} placeholder="Mô tả ngắn"
-            className="col-span-2 rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
-          <button type="submit" className="col-span-2 flex items-center justify-center gap-1.5 rounded-md bg-teal-900 py-2 text-sm text-white hover:bg-teal-800 sm:col-span-1">
+        <form onSubmit={handleCreateProject} className="mt-3 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <input value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} placeholder="Tên dự án *"
+              className="col-span-2 rounded-md border border-stone-300 px-3 py-1.5 text-sm sm:col-span-1" />
+            <div className="flex items-center rounded-md border border-dashed border-stone-300 bg-stone-50 px-3 py-1.5 text-sm text-stone-400">
+              Mã dự án: tự động cấp (DA001, DA002...)
+            </div>
+            <select value={newProjectType} onChange={(e) => setNewProjectType(e.target.value)}
+              className="col-span-2 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm sm:col-span-1">
+              <option value="">— Chọn loại dự án (tùy chọn) —</option>
+              {projectTypes.map((t) => <option key={t.id} value={t.id}>{t.ten}</option>)}
+            </select>
+            <input value={newProjectDesc} onChange={(e) => setNewProjectDesc(e.target.value)} placeholder="Mô tả ngắn"
+              className="col-span-2 rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
+          </div>
+
+          {projectSchema.fields.length > 0 && (
+            <div className="grid grid-cols-2 gap-3 border-t border-stone-100 pt-3">
+              <div className="col-span-2 text-xs font-medium uppercase tracking-wide text-stone-400">Thông tin chung của dự án</div>
+              {projectSchema.fields.map((f) => (
+                <div key={f.name} className={f.wide ? 'col-span-2' : 'col-span-1'}>
+                  <label className="mb-1 block text-xs font-medium text-stone-600">
+                    {f.label}{f.required && <span className="text-rose-600"> *</span>}
+                  </label>
+                  {f.type === 'table' ? (
+                    <TableFieldEditor columns={f.options} rows={newProjectData[f.name] || []} onChange={(rows) => setNewProjectData((prev) => ({ ...prev, [f.name]: rows }))} />
+                  ) : (
+                    <Field field={f} value={newProjectData[f.name] ?? ''} onChange={(v) => setNewProjectData((prev) => ({ ...prev, [f.name]: v }))} />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="border-t border-stone-100 pt-3">
+            <div className="text-xs font-medium uppercase tracking-wide text-stone-400">Biểu mẫu cần thiết &amp; thứ tự thực hiện</div>
+            <p className="mt-1 text-xs text-stone-400">Chọn các loại hồ sơ cần cho dự án này. Sẽ khóa loại sau cho đến khi loại trước được đánh dấu hoàn thành.</p>
+            <div className="mt-2 space-y-1">
+              {TYPE_ORDER.map((docType) => (
+                <label key={docType} className="flex items-center gap-2 rounded-md border border-stone-200 px-2 py-1.5 text-sm">
+                  <input type="checkbox" checked={selectedSteps.includes(docType)} onChange={() => toggleStepSelection(docType)} />
+                  {DOC_TYPES[docType].label}
+                </label>
+              ))}
+            </div>
+            {selectedSteps.length > 0 && (
+              <div className="mt-2 rounded-md bg-stone-50 p-2">
+                <div className="text-xs text-stone-500">Thứ tự thực hiện:</div>
+                {selectedSteps.map((docType, idx) => (
+                  <div key={docType} className="mt-1 flex items-center justify-between rounded bg-white px-2 py-1 text-sm">
+                    <span>{idx + 1}. {DOC_TYPES[docType].label}</span>
+                    <div className="flex gap-1">
+                      <button type="button" disabled={idx === 0} onClick={() => moveStep(docType, 'up')} className="rounded p-1 text-stone-400 hover:bg-stone-100 disabled:opacity-30">▲</button>
+                      <button type="button" disabled={idx === selectedSteps.length - 1} onClick={() => moveStep(docType, 'down')} className="rounded p-1 text-stone-400 hover:bg-stone-100 disabled:opacity-30">▼</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <button type="submit" className="flex w-full items-center justify-center gap-1.5 rounded-md bg-teal-900 py-2 text-sm text-white hover:bg-teal-800 sm:w-auto sm:px-6">
             <Plus className="h-4 w-4" /> Tạo dự án
           </button>
         </form>
@@ -2628,20 +3064,200 @@ function ProjectsView({ projects, projectTypes, onCreateProject, onDeleteProject
           <div className="rounded-lg border border-dashed border-stone-300 py-10 text-center text-sm text-stone-400">Chưa có dự án nào.</div>
         )}
         {projects.map((p) => (
-          <div key={p.id} className="flex items-center justify-between rounded-lg border border-stone-200 bg-white p-4">
-            <div>
-              <div className="text-sm font-semibold text-teal-950">{p.ten} {p.maDuAn && <span className="font-normal text-stone-400">({p.maDuAn})</span>}</div>
-              <div className="mt-0.5 flex items-center gap-2 text-xs text-stone-500">
-                {p.typeName && <span className="rounded bg-stone-100 px-1.5 py-0.5">{p.typeName}</span>}
-                {p.moTa}
+          <div key={p.id} className="rounded-lg border border-stone-200 bg-white p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm font-semibold text-teal-950">{p.ten} {p.maDuAn && <span className="font-normal text-stone-400">({p.maDuAn})</span>}</div>
+                <div className="mt-0.5 flex items-center gap-2 text-xs text-stone-500">
+                  {p.typeName && <span className="rounded bg-stone-100 px-1.5 py-0.5">{p.typeName}</span>}
+                  {p.moTa}
+                </div>
               </div>
+              <button onClick={() => handleDeleteProject(p)}
+                className={`rounded p-1.5 hover:bg-rose-50 ${confirmDeleteProject === p.id ? 'text-rose-700' : 'text-stone-400 hover:text-rose-700'}`}>
+                <Trash2 className="h-4 w-4" />
+              </button>
             </div>
-            <button onClick={() => handleDeleteProject(p)}
-              className={`rounded p-1.5 hover:bg-rose-50 ${confirmDeleteProject === p.id ? 'text-rose-700' : 'text-stone-400 hover:text-rose-700'}`}>
-              <Trash2 className="h-4 w-4" />
+
+            {projectSchema.fields.length > 0 && Object.keys(p.data || {}).some((k) => p.data[k]) && (
+              <div className="mt-2 space-y-0.5 border-t border-stone-100 pt-2 text-xs text-stone-500">
+                {projectSchema.fields.filter((f) => f.type !== 'table' && p.data?.[f.name]).map((f) => (
+                  <div key={f.name}>{f.label}: <span className="text-stone-700">{p.data[f.name]}</span></div>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-2 border-t border-stone-100 pt-2">
+              {editingStepsFor === p.id ? (
+                <ProjectStepsEditor
+                  initialSteps={(projectSteps[p.id] || []).map((s) => s.docType)}
+                  onCancel={() => setEditingStepsFor(null)}
+                  onSave={async (steps) => { await onSaveProjectSteps(p.id, steps.map((docType) => ({ docType }))); setEditingStepsFor(null); }}
+                />
+              ) : (
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                    {(projectSteps[p.id] || []).length === 0 ? (
+                      <span className="text-stone-400">Chưa cấu hình bước nào (không khóa thứ tự).</span>
+                    ) : (
+                      (projectSteps[p.id] || []).map((s, idx) => (
+                        <span key={s.docType} className={`flex items-center gap-1 rounded px-2 py-0.5 ${s.completed ? 'bg-teal-50 text-teal-700' : 'bg-stone-100 text-stone-500'}`}>
+                          {idx + 1}. {DOC_TYPES[s.docType].short}
+                          {s.completed ? <CheckCircle2 className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
+                        </span>
+                      ))
+                    )}
+                  </div>
+                  <button onClick={() => setEditingStepsFor(p.id)} className="flex items-center gap-1 text-xs text-teal-800 hover:underline">
+                    <Settings2 className="h-3 w-3" /> Sửa các bước
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-2 border-t border-stone-100 pt-2">
+              {managingPackagesFor === p.id ? (
+                <GoiThauManager
+                  project={p}
+                  goiThauSchema={goiThauSchema}
+                  packages={goiThauList[p.id] || []}
+                  onCreate={(ten, data) => onCreateGoiThau(p.id, ten, data)}
+                  onDelete={(id) => onDeleteGoiThau(id, p.id)}
+                  onClose={() => setManagingPackagesFor(null)}
+                />
+              ) : (
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-stone-500">
+                    {(goiThauList[p.id] || []).length === 0 ? 'Chưa có gói thầu nào.' : `${(goiThauList[p.id] || []).length} gói thầu: ${(goiThauList[p.id] || []).map((g) => g.maGoiThau).join(', ')}`}
+                  </div>
+                  <button onClick={() => setManagingPackagesFor(p.id)} className="flex items-center gap-1 text-xs text-teal-800 hover:underline">
+                    <ClipboardList className="h-3 w-3" /> Quản lý gói thầu
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Quản lý danh sách "Gói thầu" của 1 dự án (mã tự động sinh) ---------------- */
+
+function GoiThauManager({ project, goiThauSchema, packages, onCreate, onDelete, onClose }) {
+  const [tenGoiThau, setTenGoiThau] = useState('');
+  const [extraData, setExtraData] = useState({});
+  const [creating, setCreating] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(null);
+
+  async function handleCreate(e) {
+    e.preventDefault();
+    if (!tenGoiThau.trim()) return;
+    setCreating(true);
+    await onCreate(tenGoiThau.trim(), extraData);
+    setCreating(false);
+    setTenGoiThau(''); setExtraData({});
+  }
+  async function handleDelete(id) {
+    if (confirmDelete !== id) {
+      setConfirmDelete(id);
+      setTimeout(() => setConfirmDelete((c) => (c === id ? null : c)), 3000);
+      return;
+    }
+    await onDelete(id);
+    setConfirmDelete(null);
+  }
+
+  return (
+    <div className="rounded-md bg-stone-50 p-3">
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-medium text-stone-700">Danh sách gói thầu — {project.ten}</div>
+        <button onClick={onClose} className="text-xs text-stone-500 hover:underline">Đóng</button>
+      </div>
+
+      <div className="mt-2 divide-y divide-stone-200 rounded-md border border-stone-200 bg-white">
+        {packages.length === 0 && <div className="px-3 py-2 text-xs text-stone-400">Chưa có gói thầu nào.</div>}
+        {packages.map((g) => (
+          <div key={g.id} className="flex items-center justify-between px-3 py-2 text-sm">
+            <div>
+              <span className="font-mono text-xs text-teal-800">{g.maGoiThau}</span>
+              <span className="ml-2 text-stone-700">{g.tenGoiThau}</span>
+            </div>
+            <button onClick={() => handleDelete(g.id)}
+              className={`rounded p-1 hover:bg-rose-50 ${confirmDelete === g.id ? 'text-rose-700' : 'text-stone-400 hover:text-rose-700'}`}>
+              <Trash2 className="h-3.5 w-3.5" />
             </button>
           </div>
         ))}
+      </div>
+
+      <form onSubmit={handleCreate} className="mt-3 space-y-2">
+        <input value={tenGoiThau} onChange={(e) => setTenGoiThau(e.target.value)} placeholder="Tên gói thầu mới *"
+          className="w-full rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
+        {goiThauSchema.fields.map((f) => (
+          <div key={f.name}>
+            <label className="mb-1 block text-xs text-stone-500">{f.label}</label>
+            {f.type === 'table' ? (
+              <TableFieldEditor columns={f.options} rows={extraData[f.name] || []} onChange={(rows) => setExtraData((prev) => ({ ...prev, [f.name]: rows }))} />
+            ) : (
+              <Field field={f} value={extraData[f.name] ?? ''} onChange={(v) => setExtraData((prev) => ({ ...prev, [f.name]: v }))} />
+            )}
+          </div>
+        ))}
+        <p className="text-xs text-stone-400">Mã gói thầu sẽ tự động cấp (ví dụ {project.maDuAn}GT01).</p>
+        <button type="submit" disabled={creating}
+          className="flex w-full items-center justify-center gap-1.5 rounded-md bg-teal-900 py-1.5 text-sm text-white hover:bg-teal-800 disabled:opacity-60">
+          {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+          Thêm gói thầu
+        </button>
+      </form>
+    </div>
+  );
+}
+function ProjectStepsEditor({ initialSteps, onCancel, onSave }) {
+  const [steps, setSteps] = useState(initialSteps);
+
+  function toggle(docType) {
+    setSteps((prev) => (prev.includes(docType) ? prev.filter((d) => d !== docType) : [...prev, docType]));
+  }
+  function move(docType, direction) {
+    setSteps((prev) => {
+      const idx = prev.indexOf(docType);
+      const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+      if (swapIdx < 0 || swapIdx >= prev.length) return prev;
+      const next = [...prev];
+      [next[idx], next[swapIdx]] = [next[swapIdx], next[idx]];
+      return next;
+    });
+  }
+
+  return (
+    <div className="rounded-md bg-stone-50 p-3">
+      <div className="space-y-1">
+        {TYPE_ORDER.map((docType) => (
+          <label key={docType} className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={steps.includes(docType)} onChange={() => toggle(docType)} />
+            {DOC_TYPES[docType].label}
+          </label>
+        ))}
+      </div>
+      {steps.length > 0 && (
+        <div className="mt-2 space-y-1">
+          {steps.map((docType, idx) => (
+            <div key={docType} className="flex items-center justify-between rounded bg-white px-2 py-1 text-sm">
+              <span>{idx + 1}. {DOC_TYPES[docType].label}</span>
+              <div className="flex gap-1">
+                <button type="button" disabled={idx === 0} onClick={() => move(docType, 'up')} className="rounded p-1 text-stone-400 hover:bg-stone-100 disabled:opacity-30">▲</button>
+                <button type="button" disabled={idx === steps.length - 1} onClick={() => move(docType, 'down')} className="rounded p-1 text-stone-400 hover:bg-stone-100 disabled:opacity-30">▼</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="mt-3 flex justify-end gap-2">
+        <button onClick={onCancel} className="rounded-md border border-stone-300 px-3 py-1 text-xs text-stone-600 hover:bg-white">Hủy</button>
+        <button onClick={() => onSave(steps)} className="rounded-md bg-teal-900 px-3 py-1 text-xs text-white hover:bg-teal-800">Lưu</button>
       </div>
     </div>
   );
@@ -2996,11 +3612,13 @@ function UsersView({
 /* Trang "Tùy chỉnh mẫu" — khai báo trường thông tin + thiết kế bản in */
 /* ------------------------------------------------------------------ */
 
-function TemplateEditorView({ getSchema, projectTypes, customFields, hiddenFields, fieldOverrides, printTemplates, docxTemplates, onUploadDocxTemplate, onCreateField, onDeleteField, onReorderField, onUpdateField, onToggleHideField, onSaveFieldOverride, onSavePrintTemplate, showToast }) {
+function TemplateEditorView({ getSchema, projectTypes, customFields, hiddenFields, fieldOverrides, printTemplates, docxTemplates, templateFieldMode, onSetTemplateFieldMode, onUploadDocxTemplate, onCreateField, onDeleteField, onReorderField, onUpdateField, onToggleHideField, onSaveFieldOverride, onSavePrintTemplate, showToast }) {
   const [docType, setDocType] = useState('bao_gia');
   const [tab, setTab] = useState('fields'); // fields | print | docx
   const [projectTypeId, setProjectTypeId] = useState(GENERIC_TYPE_ID);
-  const supportsDocx = ['ho_so_yeu_cau', 'bien_ban', 'hop_dong'].includes(docType);
+  const isProjectFields = docType === 'project' || docType === 'goi_thau';
+  const supportsDocx = !isProjectFields && ['ho_so_yeu_cau', 'bien_ban', 'hop_dong'].includes(docType);
+  const currentMode = (templateFieldMode[docType] && templateFieldMode[docType][projectTypeId]) || 'extend';
 
   return (
     <div className="mx-auto max-w-5xl px-8 py-8">
@@ -3008,47 +3626,68 @@ function TemplateEditorView({ getSchema, projectTypes, customFields, hiddenField
       <p className="mt-1 text-sm text-stone-500">Khai báo thêm trường thông tin và thiết kế bố cục bản in cho từng loại hồ sơ. Có thể tạo mẫu riêng theo từng loại dự án.</p>
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
-        <select value={docType} onChange={(e) => { setDocType(e.target.value); if (tab === 'docx' && !['ho_so_yeu_cau', 'bien_ban', 'hop_dong'].includes(e.target.value)) setTab('fields'); }}
+        <select value={docType} onChange={(e) => { setDocType(e.target.value); setTab('fields'); }}
           className="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm">
           {TYPE_ORDER.map((k) => <option key={k} value={k}>{DOC_TYPES[k].label}</option>)}
+          <option value="project">Dự án (thông tin chung)</option>
+          <option value="goi_thau">Gói thầu (thông tin riêng)</option>
         </select>
 
-        <select value={projectTypeId} onChange={(e) => setProjectTypeId(e.target.value)}
-          className="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm">
-          <option value={GENERIC_TYPE_ID}>Áp dụng cho tất cả loại dự án</option>
-          {projectTypes.map((t) => <option key={t.id} value={t.id}>Riêng cho: {t.ten}</option>)}
-        </select>
+        {!isProjectFields && (
+          <select value={projectTypeId} onChange={(e) => setProjectTypeId(e.target.value)}
+            className="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm">
+            <option value={GENERIC_TYPE_ID}>Áp dụng cho tất cả loại dự án</option>
+            {projectTypes.map((t) => <option key={t.id} value={t.id}>Riêng cho: {t.ten}</option>)}
+          </select>
+        )}
 
-        <div className="flex gap-1 border-b border-stone-200">
-          <button onClick={() => setTab('fields')}
-            className={`border-b-2 px-3 py-1.5 text-sm ${tab === 'fields' ? 'border-teal-800 font-medium text-teal-900' : 'border-transparent text-stone-500 hover:text-stone-700'}`}>
-            Trường thông tin
-          </button>
-          <button onClick={() => setTab('print')}
-            className={`border-b-2 px-3 py-1.5 text-sm ${tab === 'print' ? 'border-teal-800 font-medium text-teal-900' : 'border-transparent text-stone-500 hover:text-stone-700'}`}>
-            Bố cục bản in
-          </button>
-          {supportsDocx && (
-            <button onClick={() => setTab('docx')}
-              className={`border-b-2 px-3 py-1.5 text-sm ${tab === 'docx' ? 'border-teal-800 font-medium text-teal-900' : 'border-transparent text-stone-500 hover:text-stone-700'}`}>
-              File mẫu Word
+        {!isProjectFields && (
+          <div className="flex gap-1 border-b border-stone-200">
+            <button onClick={() => setTab('fields')}
+              className={`border-b-2 px-3 py-1.5 text-sm ${tab === 'fields' ? 'border-teal-800 font-medium text-teal-900' : 'border-transparent text-stone-500 hover:text-stone-700'}`}>
+              Trường thông tin
             </button>
-          )}
-        </div>
+            <button onClick={() => setTab('print')}
+              className={`border-b-2 px-3 py-1.5 text-sm ${tab === 'print' ? 'border-teal-800 font-medium text-teal-900' : 'border-transparent text-stone-500 hover:text-stone-700'}`}>
+              Bố cục bản in
+            </button>
+            {supportsDocx && (
+              <button onClick={() => setTab('docx')}
+                className={`border-b-2 px-3 py-1.5 text-sm ${tab === 'docx' ? 'border-teal-800 font-medium text-teal-900' : 'border-transparent text-stone-500 hover:text-stone-700'}`}>
+                File mẫu Word
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
-      {projectTypeId !== GENERIC_TYPE_ID && (
+      {!isProjectFields && projectTypeId !== GENERIC_TYPE_ID && (
         <p className="mt-2 text-xs text-amber-700">
           Bạn đang chỉnh mẫu <strong>riêng</strong> cho loại dự án này — chỉ áp dụng cho dự án thuộc loại đó. Dự án không có loại (hoặc loại khác) vẫn dùng mẫu chung.
         </p>
+      )}
+
+      {!isProjectFields && tab === 'fields' && projectTypeId !== GENERIC_TYPE_ID && (
+        <div className="mt-3 flex items-center gap-3 rounded-md border border-stone-200 bg-white p-3">
+          <div className="text-xs font-medium text-stone-600">Cách mẫu riêng này hoạt động:</div>
+          <label className="flex items-center gap-1.5 text-xs">
+            <input type="radio" checked={currentMode === 'extend'} onChange={() => onSetTemplateFieldMode(docType, projectTypeId, 'extend')} />
+            Kế thừa mẫu chung (cộng thêm trường riêng)
+          </label>
+          <label className="flex items-center gap-1.5 text-xs">
+            <input type="radio" checked={currentMode === 'replace'} onChange={() => onSetTemplateFieldMode(docType, projectTypeId, 'replace')} />
+            Tự thiết kế lại từ đầu (bỏ hẳn trường có sẵn &amp; mẫu chung)
+          </label>
+        </div>
       )}
 
       <div className="mt-5">
         {tab === 'fields' && (
           <FieldsManager
             docType={docType}
-            projectTypeId={projectTypeId}
-            builtInFields={DOC_TYPES[docType].fields}
+            projectTypeId={isProjectFields ? GENERIC_TYPE_ID : projectTypeId}
+            mode={isProjectFields ? 'extend' : currentMode}
+            builtInFields={isProjectFields || currentMode === 'replace' ? [] : DOC_TYPES[docType].fields}
             customFields={customFields[docType] || []}
             hiddenFieldRows={hiddenFields[docType] || []}
             fieldOverrideRows={fieldOverrides[docType] || []}
@@ -3061,7 +3700,7 @@ function TemplateEditorView({ getSchema, projectTypes, customFields, hiddenField
             showToast={showToast}
           />
         )}
-        {tab === 'print' && (
+        {!isProjectFields && tab === 'print' && (
           <PrintDesigner
             key={docType + projectTypeId}
             docType={docType}
@@ -3070,7 +3709,7 @@ function TemplateEditorView({ getSchema, projectTypes, customFields, hiddenField
             onSave={(layout) => onSavePrintTemplate(docType, layout, projectTypeId)}
           />
         )}
-        {tab === 'docx' && supportsDocx && (
+        {!isProjectFields && tab === 'docx' && supportsDocx && (
           <DocxTemplateManager
             key={docType + projectTypeId}
             docType={docType}
@@ -3155,7 +3794,7 @@ function TableColumnsBuilder({ columns, onChange }) {
   const COL_TYPE_LABELS = { text: 'Văn bản', number: 'Số', date: 'Ngày' };
 
   function addColumn() {
-    onChange([...columns, { key: slugifyKey('cot'), label: '', type: 'text' }]);
+    onChange([...columns, { key: slugifyKey('cot'), label: '', type: 'text', required: false }]);
   }
   function updateColumn(idx, patch) {
     onChange(columns.map((c, i) => (i === idx ? { ...c, ...patch } : c)));
@@ -3174,6 +3813,9 @@ function TableColumnsBuilder({ columns, onChange }) {
           <select value={c.type} onChange={(e) => updateColumn(idx, { type: e.target.value })} className="rounded border border-stone-300 bg-white px-1.5 py-1 text-xs">
             {Object.entries(COL_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
+          <label className="flex items-center gap-1 whitespace-nowrap text-xs text-stone-500">
+            <input type="checkbox" checked={!!c.required} onChange={(e) => updateColumn(idx, { required: e.target.checked })} /> Bắt buộc
+          </label>
           <button onClick={() => removeColumn(idx)} className="text-stone-400 hover:text-rose-600"><X className="h-3.5 w-3.5" /></button>
         </div>
       ))}
@@ -3226,7 +3868,7 @@ function FieldEditForm({ initial, onSave, onCancel }) {
 }
 
 function FieldsManager({
-  docType, projectTypeId, builtInFields, customFields, hiddenFieldRows, fieldOverrideRows,
+  docType, projectTypeId, mode, builtInFields, customFields, hiddenFieldRows, fieldOverrideRows,
   onCreateField, onDeleteField, onReorderField, onUpdateField, onToggleHideField, onSaveFieldOverride, showToast,
 }) {
   const [label, setLabel] = useState('');
@@ -3303,7 +3945,7 @@ function FieldsManager({
     return { ...merged, __hiddenHere: hiddenHere };
   });
 
-  const genericCustom = customFields.filter((f) => f.project_type_id === GENERIC_TYPE_ID);
+  const genericCustom = mode === 'replace' ? [] : customFields.filter((f) => f.project_type_id === GENERIC_TYPE_ID);
   const specificCustom = !isGeneric ? customFields.filter((f) => f.project_type_id === projectTypeId) : [];
   const sortedCustom = [...specificCustom].sort((a, b) => a.sort_order - b.sort_order);
 
@@ -3311,6 +3953,9 @@ function FieldsManager({
     <div className="grid grid-cols-2 gap-5">
       <div className="rounded-lg border border-stone-200 bg-white p-5">
         <div className="text-sm font-medium text-stone-700">Trường có sẵn</div>
+        {mode === 'replace' ? (
+          <p className="mt-2 text-xs text-stone-400">Đang ở chế độ "Tự thiết kế lại từ đầu" — trường có sẵn và trường của mẫu chung không áp dụng cho loại dự án này.</p>
+        ) : (
         <div className="mt-2 max-h-[28rem] overflow-y-auto divide-y divide-stone-100">
           {builtInWithOverride.map((f) => {
             const isHidden = f.__hiddenHere;
@@ -3345,9 +3990,12 @@ function FieldsManager({
             );
           })}
         </div>
+        )}
+        {mode !== 'replace' && (
         <p className="mt-2 text-xs text-stone-400">
           Có thể sửa tên/kiểu/bắt buộc/lựa chọn hoặc ẩn bớt trường không cần dùng — dữ liệu cũ đã nhập vẫn được giữ nguyên, không mất.
         </p>
+        )}
       </div>
 
       <div className="rounded-lg border border-stone-200 bg-white p-5">
@@ -3601,7 +4249,7 @@ function AssignFieldsModal({ schema, profiles, onClose, onAssign }) {
   const [userId, setUserId] = useState('');
   const [selectedFields, setSelectedFields] = useState([]);
   const [submitting, setSubmitting] = useState(false);
-  const assignableFields = schema.fields.filter((f) => f.type !== 'items' && f.type !== 'table');
+  const assignableFields = schema.fields.filter((f) => f.name !== 'maGoiThau' && f.name !== 'tenGoiThau');
 
   function toggleField(name) {
     setSelectedFields((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]));
@@ -3634,6 +4282,11 @@ function AssignFieldsModal({ schema, profiles, onClose, onAssign }) {
         <div className="mt-4">
           <label className="mb-1 block text-xs font-medium text-stone-600">Trường cần điền</label>
           <div className="max-h-56 overflow-y-auto rounded-md border border-stone-200 p-2">
+            {assignableFields.length === 0 && (
+              <p className="p-2 text-xs text-stone-400">
+                Chưa có trường nào để giao việc. Hãy vào "Tùy chỉnh mẫu" thêm ít nhất 1 trường cho loại hồ sơ (và loại dự án) này.
+              </p>
+            )}
             {assignableFields.map((f) => (
               <label key={f.name} className="flex items-center gap-2 py-1 text-sm text-stone-700">
                 <input type="checkbox" checked={selectedFields.includes(f.name)} onChange={() => toggleField(f.name)} />
@@ -3720,7 +4373,11 @@ function MyAssignmentsView({ assignments, records, nameOf, onOpen }) {
 function AssignmentFillView({ schema, record, project, assignment, onSaveDraft, onComplete, onBack }) {
   const [values, setValues] = useState(() => {
     const init = {};
-    assignment.fieldKeys.forEach((k) => { init[k] = record[k] ?? ''; });
+    assignment.fieldKeys.forEach((k) => {
+      const f = schema.fields.find((x) => x.name === k);
+      if (f && (f.type === 'table' || f.type === 'items')) init[k] = record[k] ?? [];
+      else init[k] = record[k] ?? '';
+    });
     return init;
   });
   const [showPreview, setShowPreview] = useState(false);
@@ -3770,11 +4427,17 @@ function AssignmentFillView({ schema, record, project, assignment, onSaveDraft, 
         <div className="mt-5 rounded-lg border border-stone-200 bg-white p-6">
           <div className="grid grid-cols-2 gap-x-4 gap-y-4">
             {fields.map((f) => (
-              <div key={f.name} className={f.wide ? 'col-span-2' : 'col-span-1'}>
+              <div key={f.name} className={f.wide || f.type === 'items' || f.type === 'table' ? 'col-span-2' : 'col-span-1'}>
                 <label className="mb-1 block text-xs font-medium text-stone-600">
                   {f.label}{f.required && <span className="text-rose-600"> *</span>}
                 </label>
-                <Field field={f} value={values[f.name] ?? ''} onChange={(v) => updateValue(f.name, v)} disabled={isDone} />
+                {f.type === 'items' ? (
+                  <ItemsEditor rows={values[f.name]} onChange={(rows) => updateValue(f.name, rows)} />
+                ) : f.type === 'table' ? (
+                  <TableFieldEditor columns={f.options} rows={values[f.name]} onChange={(rows) => updateValue(f.name, rows)} />
+                ) : (
+                  <Field field={f} value={values[f.name] ?? ''} onChange={(v) => updateValue(f.name, v)} disabled={isDone} />
+                )}
               </div>
             ))}
           </div>
