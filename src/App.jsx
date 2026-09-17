@@ -1371,12 +1371,21 @@ export default function App() {
   async function sendNotificationEmail(toUserId, subject, html) {
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-email`, {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-email`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({ to_user_id: toUserId, subject, html }),
       });
-    } catch (e) { /* gửi email thất bại không nên chặn luồng chính */ }
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast('Đã lưu thao tác, nhưng gửi email thất bại: ' + (result.error || `mã lỗi ${res.status}`), 'error');
+        return false;
+      }
+      return true;
+    } catch (e) {
+      showToast('Đã lưu thao tác, nhưng không gửi được email (lỗi kết nối): ' + e.message, 'error');
+      return false;
+    }
   }
 
   async function createAssignment(documentId, docType, assignedToUserId, fieldKeys, recordTitle) {
