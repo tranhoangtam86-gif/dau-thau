@@ -1211,10 +1211,12 @@ export default function App() {
   /* ---------------- đơn vị (phòng ban) + lãnh đạo đơn vị (admin only) ---------------- */
   async function createUnit(ten) {
     const { data, error } = await supabase.from('units').insert({ ten }).select().single();
-    if (error) { showToast('Không thể tạo đơn vị: ' + error.message, 'error'); return; }
-    setUnits((prev) => [...prev, { id: data.id, ten: data.ten, leaderId: data.leader_id }]);
+    if (error) { showToast('Không thể tạo đơn vị: ' + error.message, 'error'); return null; }
+    const newUnit = { id: data.id, ten: data.ten, leaderId: data.leader_id };
+    setUnits((prev) => [...prev, newUnit]);
     showToast('Đã tạo đơn vị.');
     appendLog('create_unit', `${myProfile.full_name} đã tạo đơn vị "${ten}".`);
+    return newUnit;
   }
   async function deleteUnit(id) {
     const { error } = await supabase.from('units').delete().eq('id', id);
@@ -4853,6 +4855,11 @@ function UnitsView({ units, profiles, onCreateUnit, onDeleteUnit, onSetLeader, o
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [addMemberDraft, setAddMemberDraft] = useState({}); // { [unitId]: userId }
 
+  const [bulkRows, setBulkRows] = useState([]); // [{ unitName, memberName, isLeader, error? }]
+  const [bulkResults, setBulkResults] = useState(null);
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
+  const fileInputRef = useRef(null);
+
   async function handleCreate(e) {
     e.preventDefault();
     if (!newUnitName.trim()) return;
@@ -4874,6 +4881,88 @@ function UnitsView({ units, profiles, onCreateUnit, onDeleteUnit, onSetLeader, o
     setConfirmDelete(null);
   }
 
+  function downloadUnitTemplate() {
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['Tên đơn vị', 'Họ tên nhân viên', 'Là lãnh đạo'],
+      ['Phòng Kỹ thuật', 'Nguyễn Văn A', 'x'],
+      ['Phòng Kỹ thuật', 'Trần Thị B', ''],
+      ['Phòng Kinh doanh', 'Lê Văn C', 'x'],
+    ]);
+    XLSX.utils.book_append_sheet(wb, ws, 'Đơn vị');
+    XLSX.writeFile(wb, 'mau_nhap_don_vi.xlsx');
+  }
+
+  function handleFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const wb = XLSX.read(evt.target.result, { type: 'binary' });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+        const rows = json.map((row) => {
+          const getVal = (keys) => {
+            for (const k of Object.keys(row)) {
+              if (keys.some((target) => k.trim().toLowerCase() === target)) return row[k];
+            }
+            return '';
+          };
+          const unitName = String(getVal(['tên đơn vị', 'ten don vi', 'đơn vị', 'don vi']) || '').trim();
+          const memberName = String(getVal(['họ tên nhân viên', 'ho ten nhan vien', 'nhân viên', 'nhan vien']) || '').trim();
+          const isLeaderRaw = String(getVal(['là lãnh đạo', 'la lanh dao', 'lãnh đạo', 'lanh dao']) || '').trim().toLowerCase();
+          const isLeader = ['x', 'có', 'co', 'yes', 'true', '1'].includes(isLeaderRaw);
+          let error = null;
+          if (!unitName) error = 'Thiếu tên đơn vị';
+          else if (memberName && !profiles.some((p) => (p.full_name || '').trim().toLowerCase() === memberName.toLowerCase())) {
+            error = `Không tìm thấy người dùng tên "${memberName}"`;
+          }
+          return { unitName, memberName, isLeader, error };
+        });
+        setBulkRows(rows);
+        setBulkResults(null);
+        showToast(`Đã đọc ${rows.length} dòng từ file Excel.`);
+      } catch (err) {
+        showToast('Không đọc được file Excel: ' + err.message, 'error');
+      }
+    };
+    reader.readAsBinaryString(file);
+    e.target.value = '';
+  }
+
+  async function submitBulk() {
+    const validRows = bulkRows.filter((r) => !r.error);
+    if (validRows.length === 0) return;
+    setBulkSubmitting(true);
+
+    // cache cục bộ để tránh tạo trùng đơn vị mới khi nhiều dòng cùng nhắc 1 tên đơn vị chưa có
+    const unitCache = {};
+    units.forEach((u) => { unitCache[u.ten.trim().toLowerCase()] = u; });
+
+    const results = [];
+    for (const row of validRows) {
+      const key = row.unitName.trim().toLowerCase();
+      let unit = unitCache[key];
+      if (!unit) {
+        unit = await onCreateUnit(row.unitName.trim());
+        if (!unit) { results.push({ ...row, ok: false, error: 'Không thể tạo đơn vị' }); continue; }
+        unitCache[key] = unit;
+      }
+      if (row.memberName) {
+        const profile = profiles.find((p) => (p.full_name || '').trim().toLowerCase() === row.memberName.toLowerCase());
+        if (profile) {
+          await onAssignUser(profile.id, unit.id);
+          if (row.isLeader) await onSetLeader(unit.id, profile.id);
+        }
+      }
+      results.push({ ...row, ok: true });
+    }
+    setBulkSubmitting(false);
+    setBulkResults(results);
+    if (results.every((r) => r.ok)) setBulkRows([]);
+  }
+
   return (
     <div className="mx-auto max-w-4xl px-8 py-8">
       <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">Đơn vị</div>
@@ -4893,6 +4982,66 @@ function UnitsView({ units, profiles, onCreateUnit, onDeleteUnit, onSetLeader, o
             <Plus className="h-3.5 w-3.5" /> Tạo
           </button>
         </form>
+      </div>
+
+      <div className="mt-6 rounded-lg border border-stone-200 bg-white p-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm font-medium text-stone-700">
+            <FileSpreadsheet className="h-4 w-4 text-teal-800" /> Nhập danh sách đơn vị từ Excel
+          </div>
+          <button type="button" onClick={downloadUnitTemplate} className="flex items-center gap-1 text-xs text-teal-800 hover:underline">
+            <Download className="h-3.5 w-3.5" /> Tải file mẫu
+          </button>
+        </div>
+        <p className="mt-1 text-xs text-stone-400">
+          Mỗi dòng là 1 nhân viên thuộc 1 đơn vị. Nhiều dòng cùng "Tên đơn vị" sẽ gộp vào chung 1 đơn vị.
+          Cột "Là lãnh đạo" ghi "x" để đặt người đó làm lãnh đạo. Có thể để trống "Họ tên nhân viên" nếu chỉ muốn tạo đơn vị chưa có ai.
+        </p>
+        <div className="mt-2">
+          <button type="button" onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-1.5 rounded-md border border-teal-800 px-3 py-1.5 text-sm text-teal-900 hover:bg-teal-50">
+            <Upload className="h-3.5 w-3.5" /> Tải lên file Excel (.xlsx)
+          </button>
+          <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleFile} className="hidden" />
+        </div>
+
+        {bulkRows.length > 0 && (
+          <>
+            <div className="mt-3 max-h-64 overflow-y-auto rounded-md border border-stone-200">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-stone-50 text-stone-500">
+                  <tr>
+                    <th className="px-2 py-1.5 text-left">Đơn vị</th>
+                    <th className="px-2 py-1.5 text-left">Nhân viên</th>
+                    <th className="px-2 py-1.5 text-left">Lãnh đạo</th>
+                    <th className="px-2 py-1.5 text-left">Trạng thái</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bulkRows.map((r, i) => {
+                    const res = bulkResults?.[i];
+                    return (
+                      <tr key={i} className="border-t border-stone-100">
+                        <td className="px-2 py-1.5">{r.unitName || '—'}</td>
+                        <td className="px-2 py-1.5">{r.memberName || '—'}</td>
+                        <td className="px-2 py-1.5">{r.isLeader ? 'Có' : ''}</td>
+                        <td className="px-2 py-1.5">
+                          {res ? (res.ok ? <span className="flex items-center gap-1 text-teal-700"><CheckCircle2 className="h-3.5 w-3.5" /> Đã nhập</span> : <span className="flex items-center gap-1 text-rose-600"><XCircle className="h-3.5 w-3.5" /> {res.error}</span>)
+                            : r.error ? <span className="flex items-center gap-1 text-rose-600"><XCircle className="h-3.5 w-3.5" /> {r.error}</span> : <span className="text-stone-400">Sẵn sàng</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <button type="button" onClick={submitBulk} disabled={bulkSubmitting || bulkRows.every((r) => r.error)}
+              className="mt-2 flex items-center gap-1.5 rounded-md bg-teal-900 px-3 py-1.5 text-sm text-white hover:bg-teal-800 disabled:opacity-60">
+              {bulkSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+              Nhập {bulkRows.filter((r) => !r.error).length} dòng hợp lệ
+            </button>
+          </>
+        )}
       </div>
 
       <div className="mt-6 space-y-4">
