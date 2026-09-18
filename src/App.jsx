@@ -144,6 +144,13 @@ const TYPE_ORDER = ['bao_gia', 'ho_so_yeu_cau', 'bien_ban', 'hop_dong'];
 const GENERIC_TYPE_ID = '00000000-0000-0000-0000-000000000000';
 // Schema giả cho "Dự án" — không có trường cố định, chỉ chứa trường tùy chỉnh do admin khai báo
 const PROJECT_BASE_SCHEMA = { key: 'project', label: 'Dự án (thông tin chung)', fields: [] };
+// Mô tả cột của bảng "Hạng mục hàng hóa/dịch vụ" có sẵn (dùng khi in bảng này)
+const ITEMS_COLUMNS = [
+  { key: 'tenHangHoa', label: 'Tên hàng hóa / dịch vụ', type: 'text' },
+  { key: 'donViTinh', label: 'Đơn vị', type: 'text' },
+  { key: 'soLuong', label: 'Số lượng', type: 'number' },
+  { key: 'donGia', label: 'Đơn giá', type: 'number' },
+];
 // Schema giả cho "Gói thầu" — tương tự, chỉ chứa trường tùy chỉnh
 const GOI_THAU_BASE_SCHEMA = { key: 'goi_thau', label: 'Gói thầu (thông tin riêng)', fields: [] };
 
@@ -629,6 +636,7 @@ export default function App() {
   const [projectSteps, setProjectSteps] = useState({}); // { [projectId]: [{ id, docType, sortOrder, completed }] }
   const [goiThauList, setGoiThauList] = useState({}); // { [projectId]: [{ id, projectId, maGoiThau, tenGoiThau, data, createdAt }] }
   const [templateFieldMode, setTemplateFieldModeState] = useState({}); // { [docType]: { [projectTypeId]: 'extend' | 'replace' } }
+  const [units, setUnits] = useState([]); // [{ id, ten, leaderId }]
   const [printTemplates, setPrintTemplates] = useState({}); // { [docType]: { layout: [...] } }
   const [docxTemplates, setDocxTemplates] = useState({}); // { [docType]: { storage_path } }
   const [myAssignments, setMyAssignments] = useState([]); // giao việc điền thông tin (của tôi hoặc do tôi giao)
@@ -688,9 +696,9 @@ export default function App() {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      const [profileRes, profilesRes, projectsRes, permsRes, typesRes, auditRes, templatesRes, customFieldsRes, printTemplatesRes, hiddenFieldsRes, fieldOverridesRes, docxTemplatesRes, assignmentsRes, projectStepsRes, goiThauRes, templateModeRes] = await Promise.all([
+      const [profileRes, profilesRes, projectsRes, permsRes, typesRes, auditRes, templatesRes, customFieldsRes, printTemplatesRes, hiddenFieldsRes, fieldOverridesRes, docxTemplatesRes, assignmentsRes, projectStepsRes, goiThauRes, templateModeRes, unitsRes] = await Promise.all([
         supabase.from('profiles').select('id, full_name, is_admin').eq('id', session.user.id).single(),
-        supabase.from('profiles').select('id, full_name, is_admin').order('full_name'),
+        supabase.from('profiles').select('id, full_name, is_admin, unit_id').order('full_name'),
         supabase.from('projects').select('id, ten, ma_du_an, mo_ta, type_id, data, created_at').order('created_at'),
         supabase.from('project_permissions').select('project_id, user_id, doc_type, can_view, can_add, can_edit, can_lock, can_delete'),
         supabase.from('project_types').select('id, ten').order('ten'),
@@ -705,17 +713,18 @@ export default function App() {
         supabase.from('project_document_types').select('id, project_id, doc_type, sort_order, completed'),
         supabase.from('goi_thau').select('id, project_id, ma_goi_thau, ten_goi_thau, data, created_at'),
         supabase.from('template_field_mode').select('doc_type, project_type_id, mode'),
+        supabase.from('units').select('id, ten, leader_id'),
       ]);
 
       const nextRecords = {};
       for (const key of TYPE_ORDER) {
         const { data: rows } = await supabase
           .from('documents')
-          .select('id, du_an_id, data, locked, created_at, updated_at, created_by')
+          .select('id, du_an_id, data, locked, status, created_at, updated_at, created_by')
           .eq('type', key)
           .order('created_at', { ascending: false });
         nextRecords[key] = (rows || []).map((r) => ({
-          ...r.data, id: r.id, duAnId: r.du_an_id, locked: !!r.locked,
+          ...r.data, id: r.id, duAnId: r.du_an_id, locked: !!r.locked, status: r.status || 'draft',
           createdAt: r.created_at, updatedAt: r.updated_at, createdBy: r.created_by,
         }));
       }
@@ -750,6 +759,7 @@ export default function App() {
         modeByType[m.doc_type][m.project_type_id] = m.mode;
       });
       setTemplateFieldModeState(modeByType);
+      setUnits((unitsRes.data || []).map((u) => ({ id: u.id, ten: u.ten, leaderId: u.leader_id })));
       setPermissions((permsRes.data || []).map((p) => ({
         projectId: p.project_id, userId: p.user_id, docType: p.doc_type,
         can_view: p.can_view, can_add: p.can_add, can_edit: p.can_edit, can_lock: p.can_lock, can_delete: p.can_delete,
@@ -901,8 +911,17 @@ export default function App() {
   function hasAnyPermission(projectId, userId) {
     return permissions.some((p) => p.projectId === projectId && p.userId === userId && (p.can_view || p.can_add || p.can_edit || p.can_lock || p.can_delete));
   }
+  // Lãnh đạo đơn vị tự động xem/duyệt được hồ sơ do nhân viên trong đơn vị mình tạo
+  function isLeaderOfCreator(creatorId) {
+    if (!creatorId) return false;
+    const creator = profiles.find((p) => p.id === creatorId);
+    if (!creator || !creator.unit_id) return false;
+    const unit = units.find((u) => u.id === creator.unit_id);
+    return !!unit && unit.leaderId === myId;
+  }
   function canViewRecord(rec, docType) {
     if (amAdmin) return true;
+    if (isLeaderOfCreator(rec.createdBy)) return true;
     if (!rec.duAnId) return false;
     return getPerm(rec.duAnId, myId, docType).view;
   }
@@ -926,6 +945,11 @@ export default function App() {
     if (amAdmin) return true;
     if (!rec.duAnId) return false;
     return getPerm(rec.duAnId, myId, docType).lock;
+  }
+  function canConfirmDoc(rec, docType) {
+    if (rec.locked) return false;
+    if (canEditDoc(rec, docType)) return true;
+    return isLeaderOfCreator(rec.createdBy);
   }
 
   // Kiểm tra loại hồ sơ này đã "tới lượt" trong dự án chưa (dựa trên các bước đã cấu hình + thứ tự).
@@ -1087,14 +1111,16 @@ export default function App() {
       return;
     }
 
-    const { duAnId, id: _ignored, createdAt, updatedAt, createdBy, locked, ...dataFields } = formData;
+    const { duAnId, id: _ignored, createdAt, updatedAt, createdBy, locked, status: prevStatus, ...dataFields } = formData;
 
     setSaving(true);
     let result;
     if (editingId) {
+      const updatePayload = { du_an_id: duAnId, data: dataFields, updated_at: new Date().toISOString() };
+      if (prevStatus === 'confirmed') updatePayload.status = 'draft'; // sửa lại thì cần xác nhận lại từ đầu
       result = await supabase
         .from('documents')
-        .update({ du_an_id: duAnId, data: dataFields, updated_at: new Date().toISOString() })
+        .update(updatePayload)
         .eq('id', editingId)
         .select()
         .single();
@@ -1113,7 +1139,7 @@ export default function App() {
     }
 
     const row = result.data;
-    const newRecord = { ...row.data, id: row.id, duAnId: row.du_an_id, locked: !!row.locked, createdAt: row.created_at, updatedAt: row.updated_at, createdBy: row.created_by };
+    const newRecord = { ...row.data, id: row.id, duAnId: row.du_an_id, locked: !!row.locked, status: row.status || 'draft', createdAt: row.created_at, updatedAt: row.updated_at, createdBy: row.created_by };
     setRecords((prev) => {
       const list = prev[activeType] || [];
       const newList = editingId ? list.map((r) => (r.id === editingId ? newRecord : r)) : [newRecord, ...list];
@@ -1169,6 +1195,48 @@ export default function App() {
     appendLog(newLocked ? 'lock_doc' : 'unlock_doc', `${myProfile.full_name} đã ${newLocked ? 'khóa' : 'mở khóa'} hồ sơ "${title}".`);
   }
 
+  async function confirmDocument(typeKey, rec) {
+    if (!canConfirmDoc(rec, typeKey)) {
+      showToast('Bạn không có quyền xác nhận hồ sơ này.', 'error');
+      return;
+    }
+    const { error } = await supabase.from('documents').update({ status: 'confirmed' }).eq('id', rec.id);
+    if (error) { showToast('Không thể xác nhận: ' + error.message, 'error'); return; }
+    setRecords((prev) => ({ ...prev, [typeKey]: (prev[typeKey] || []).map((r) => (r.id === rec.id ? { ...r, status: 'confirmed' } : r)) }));
+    showToast('Đã xác nhận hồ sơ.');
+    const title = rec.tenGoiThau || rec.soHopDong || rec.maGoiThau || '';
+    appendLog('confirm_doc', `${myProfile.full_name} đã xác nhận hồ sơ "${title}".`);
+  }
+
+  /* ---------------- đơn vị (phòng ban) + lãnh đạo đơn vị (admin only) ---------------- */
+  async function createUnit(ten) {
+    const { data, error } = await supabase.from('units').insert({ ten }).select().single();
+    if (error) { showToast('Không thể tạo đơn vị: ' + error.message, 'error'); return; }
+    setUnits((prev) => [...prev, { id: data.id, ten: data.ten, leaderId: data.leader_id }]);
+    showToast('Đã tạo đơn vị.');
+    appendLog('create_unit', `${myProfile.full_name} đã tạo đơn vị "${ten}".`);
+  }
+  async function deleteUnit(id) {
+    const { error } = await supabase.from('units').delete().eq('id', id);
+    if (error) { showToast('Không thể xóa đơn vị.', 'error'); return; }
+    setUnits((prev) => prev.filter((u) => u.id !== id));
+    setProfiles((prev) => prev.map((p) => (p.unit_id === id ? { ...p, unit_id: null } : p)));
+    showToast('Đã xóa đơn vị.');
+  }
+  async function setUnitLeader(unitId, userId) {
+    const { error } = await supabase.from('units').update({ leader_id: userId || null }).eq('id', unitId);
+    if (error) { showToast('Không thể đặt lãnh đạo: ' + error.message, 'error'); return; }
+    setUnits((prev) => prev.map((u) => (u.id === unitId ? { ...u, leaderId: userId || null } : u)));
+    showToast('Đã cập nhật lãnh đạo đơn vị.');
+    appendLog('set_unit_leader', `${myProfile.full_name} đã đặt "${nameOf(userId)}" làm lãnh đạo đơn vị.`);
+  }
+  async function assignUserToUnit(userId, unitId) {
+    const { error } = await supabase.from('profiles').update({ unit_id: unitId || null }).eq('id', userId);
+    if (error) { showToast('Không thể gán đơn vị: ' + error.message, 'error'); return; }
+    setProfiles((prev) => prev.map((p) => (p.id === userId ? { ...p, unit_id: unitId || null } : p)));
+    showToast('Đã cập nhật đơn vị cho người dùng.');
+  }
+
   // rows: [{ duAnId, ...các trường dữ liệu }] — dùng khi nhập hàng loạt từ Excel
   async function bulkImportDocuments(typeKey, rows) {
     // Cache cục bộ trong lần nhập này để tránh tạo trùng gói thầu mới nếu nhiều dòng
@@ -1215,7 +1283,7 @@ export default function App() {
       return { insertedCount: 0, results };
     }
 
-    const newRecords = data.map((r) => ({ ...r.data, id: r.id, duAnId: r.du_an_id, locked: !!r.locked, createdAt: r.created_at, updatedAt: r.updated_at, createdBy: r.created_by }));
+    const newRecords = data.map((r) => ({ ...r.data, id: r.id, duAnId: r.du_an_id, locked: !!r.locked, status: r.status || 'draft', createdAt: r.created_at, updatedAt: r.updated_at, createdBy: r.created_by }));
     setRecords((prev) => ({ ...prev, [typeKey]: [...newRecords, ...(prev[typeKey] || [])] }));
     toInsert.forEach(() => results.push({ ok: true }));
     showToast(`Đã nhập ${newRecords.length} hồ sơ từ Excel.`);
@@ -1565,6 +1633,30 @@ export default function App() {
     appendLog(makeAdmin ? 'grant_admin' : 'revoke_admin', `${myProfile.full_name} đã ${makeAdmin ? 'cấp' : 'gỡ'} quyền Quản trị viên cho "${nameOf(userId)}".`);
   }
 
+  async function updateUserProfile(userId, fullName) {
+    const { error } = await supabase.from('profiles').update({ full_name: fullName }).eq('id', userId);
+    if (error) { showToast('Không thể cập nhật thông tin: ' + error.message, 'error'); return; }
+    setProfiles((prev) => prev.map((p) => (p.id === userId ? { ...p, full_name: fullName } : p)));
+    showToast('Đã cập nhật thông tin người dùng.');
+    appendLog('update_user_profile', `${myProfile.full_name} đã sửa thông tin người dùng "${fullName}".`);
+  }
+
+  async function resetUserPassword(userId, newPassword) {
+    const { ok, result } = await callUserFunction({ action: 'reset_password', user_id: userId, new_password: newPassword });
+    if (!ok) { showToast('Không thể đặt lại mật khẩu: ' + (result.error || ''), 'error'); return false; }
+    showToast(`Đã đặt lại mật khẩu cho "${nameOf(userId)}".`);
+    appendLog('reset_password', `${myProfile.full_name} đã đặt lại mật khẩu cho "${nameOf(userId)}".`);
+    return true;
+  }
+
+  async function updateUserEmail(userId, newEmail) {
+    const { ok, result } = await callUserFunction({ action: 'update_email', user_id: userId, new_email: newEmail });
+    if (!ok) { showToast('Không thể đổi email: ' + (result.error || ''), 'error'); return false; }
+    showToast(`Đã đổi email cho "${nameOf(userId)}".`);
+    appendLog('update_email', `${myProfile.full_name} đã đổi email đăng nhập cho "${nameOf(userId)}".`);
+    return true;
+  }
+
   const schema = getSchema(activeType, GENERIC_TYPE_ID);
   const currentList = records[activeType] || [];
 
@@ -1579,6 +1671,7 @@ export default function App() {
   const detailCanEdit = detailRecord ? canEditDoc(detailRecord, activeType) : false;
   const detailCanDelete = detailRecord ? canDeleteDoc(detailRecord, activeType) : false;
   const detailCanLock = detailRecord ? canLockDoc(detailRecord, activeType) : false;
+  const detailCanConfirm = detailRecord ? canConfirmDoc(detailRecord, activeType) : false;
 
   if (authChecking) return <LoadingScreen label="Đang kiểm tra đăng nhập…" />;
   if (!session) return <Login onLogin={handleLogin} />;
@@ -1657,6 +1750,17 @@ export default function App() {
             >
               <Settings2 className="h-4 w-4" />
               Tùy chỉnh mẫu
+            </button>
+          )}
+          {amAdmin && (
+            <button
+              onClick={() => setView('units')}
+              className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
+                view === 'units' ? 'bg-teal-800/70 text-white' : 'text-teal-200 hover:bg-teal-900/60'
+              }`}
+            >
+              <Users className="h-4 w-4" />
+              Đơn vị
             </button>
           )}
           {amAdmin && (
@@ -1834,6 +1938,8 @@ export default function App() {
             canEdit={detailCanEdit}
             canDelete={detailCanDelete}
             canLock={detailCanLock}
+            canConfirm={detailCanConfirm}
+            onConfirm={() => confirmDocument(activeType, detailRecord)}
             customLayout={resolvePrintLayout(activeType, detailProject?.typeId)?.layout}
             hasDocxTemplate={!!resolveDocxTemplate(activeType, detailProject?.typeId)}
             onExportDocx={() => exportDocx(activeType, detailRecord, detailProject)}
@@ -1897,6 +2003,9 @@ export default function App() {
             onBulkCreateUsers={bulkCreateUsers}
             onRemoveUser={removeUser}
             onToggleAdmin={toggleUserAdmin}
+            onUpdateProfile={updateUserProfile}
+            onUpdateEmail={updateUserEmail}
+            onResetPassword={resetUserPassword}
             onSetPermission={setPermission}
             onRemoveUserFromProject={removeUserFromProject}
             showToast={showToast}
@@ -1922,6 +2031,18 @@ export default function App() {
             onToggleHideField={toggleBuiltinFieldVisibility}
             onSaveFieldOverride={saveFieldOverride}
             onSavePrintTemplate={savePrintTemplate}
+            showToast={showToast}
+          />
+        )}
+
+        {view === 'units' && amAdmin && (
+          <UnitsView
+            units={units}
+            profiles={profiles}
+            onCreateUnit={createUnit}
+            onDeleteUnit={deleteUnit}
+            onSetLeader={setUnitLeader}
+            onAssignUser={assignUserToUnit}
             showToast={showToast}
           />
         )}
@@ -2131,7 +2252,7 @@ function ListView({
                     ))}
                     <td className="px-2 py-2.5">
                       <div className="flex items-center justify-end gap-1">
-                        {r.locked && <Lock className="h-3.5 w-3.5 text-stone-400" />}
+                        {r.locked ? <Lock className="h-3.5 w-3.5 text-stone-400" title="Đã khóa" /> : r.status === 'confirmed' ? <CheckCircle2 className="h-3.5 w-3.5 text-teal-600" /> : null}
                         <button onClick={() => onView(r.id)} title="Xem" className="rounded p-1.5 text-stone-500 hover:bg-stone-200 hover:text-teal-900">
                           <FileText className="h-4 w-4" />
                         </button>
@@ -2624,7 +2745,7 @@ function PackageSelectField({ packages, disabled, value, error, onChange, onCrea
 /* Detail / print view                                                 */
 /* ------------------------------------------------------------------ */
 
-function DetailView({ schema, record, project, canEdit, canDelete, canLock, customLayout, hasDocxTemplate, onExportDocx, onAssign, onBack, onEdit, onDelete, onToggleLock, confirmingDelete }) {
+function DetailView({ schema, record, project, canEdit, canDelete, canLock, canConfirm, onConfirm, customLayout, hasDocxTemplate, onExportDocx, onAssign, onBack, onEdit, onDelete, onToggleLock, confirmingDelete }) {
   const hangMuc = record.hangMuc;
   const dateStr = formatDateVN(record[schema.dateField]);
   const layoutElements = Array.isArray(customLayout) ? customLayout : (customLayout?.elements || []);
@@ -2638,10 +2759,24 @@ function DetailView({ schema, record, project, canEdit, canDelete, canLock, cust
           <ChevronLeft className="h-4 w-4" /> Quay lại danh sách
         </button>
         <div className="flex items-center gap-2">
-          {record.locked && (
+          {record.locked ? (
             <span className="flex items-center gap-1 rounded-md bg-stone-100 px-2 py-1 text-xs text-stone-500">
               <Lock className="h-3 w-3" /> Đã khóa
             </span>
+          ) : record.status === 'confirmed' ? (
+            <span className="flex items-center gap-1 rounded-md bg-teal-50 px-2 py-1 text-xs text-teal-700">
+              <CheckCircle2 className="h-3 w-3" /> Đã xác nhận
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-700">
+              Nháp
+            </span>
+          )}
+          {canConfirm && record.status !== 'confirmed' && (
+            <button onClick={onConfirm}
+              className="flex items-center gap-1.5 rounded-md border border-teal-700 px-3 py-1.5 text-sm text-teal-800 hover:bg-teal-50">
+              <CheckCircle2 className="h-3.5 w-3.5" /> Xác nhận
+            </button>
           )}
           {canLock && (
             <button onClick={onToggleLock}
@@ -2820,6 +2955,26 @@ function CustomPrintOutput({ schema, record, project, elements, orientation }) {
     return record[fieldKey] ?? '';
   }
 
+  // Tính phần "đẩy xuống" do bảng dữ liệu có nhiều dòng hơn dự kiến lúc thiết kế,
+  // để các phần tử phía dưới không bị bảng đè lên.
+  const ROW_PX = 24;
+  const HEADER_PX = 26;
+  const tablePushes = elements
+    .filter((el) => el.type === 'table-field')
+    .map((el) => {
+      const isItems = el.fieldKey === 'hangMuc';
+      const rows = record[el.fieldKey] || [];
+      const rowCount = Math.max(rows.length, 1);
+      const footerPx = isItems ? ROW_PX : 0;
+      const actualHeight = HEADER_PX + rowCount * ROW_PX + footerPx;
+      const assumedHeight = HEADER_PX + (el.assumedRows || 3) * ROW_PX + footerPx;
+      return { y: el.y, push: Math.max(0, actualHeight - assumedHeight) };
+    })
+    .sort((a, b) => a.y - b.y);
+  function shiftFor(y) {
+    return tablePushes.filter((t) => t.y < y).reduce((sum, t) => sum + t.push, 0);
+  }
+
   return (
     <>
       <style>{`@page { size: A4 ${orientation || 'portrait'}; margin: 1.4cm; }`}</style>
@@ -2827,12 +2982,56 @@ function CustomPrintOutput({ schema, record, project, elements, orientation }) {
         className="relative mx-auto bg-white shadow-sm print:shadow-none"
         style={{ width: PAGE_W, minHeight: PAGE_H }}
       >
-        {elements.map((el) => (
+        {elements.map((el) => {
+          if (el.type === 'table-field') {
+            const f = schema.fields.find((x) => x.name === el.fieldKey);
+            const isItems = el.fieldKey === 'hangMuc';
+            const columns = isItems ? ITEMS_COLUMNS : (f?.options || []);
+            const rows = record[el.fieldKey] || [];
+            const total = isItems ? rows.reduce((s, r) => s + lineItemTotal(r), 0) : 0;
+            return (
+              <div key={el.id} style={{ position: 'absolute', left: el.x, top: el.y + shiftFor(el.y), width: el.w, fontSize: el.fontSize || 11 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ border: '1px solid #d6d3d1', padding: '3px 6px', textAlign: 'left', background: '#f5f5f4' }}>STT</th>
+                      {columns.map((c) => (
+                        <th key={c.key} style={{ border: '1px solid #d6d3d1', padding: '3px 6px', textAlign: 'left', background: '#f5f5f4' }}>{c.label}</th>
+                      ))}
+                      {isItems && <th style={{ border: '1px solid #d6d3d1', padding: '3px 6px', textAlign: 'right', background: '#f5f5f4' }}>Thành tiền</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((row, idx) => (
+                      <tr key={row.id || idx}>
+                        <td style={{ border: '1px solid #d6d3d1', padding: '3px 6px' }}>{idx + 1}</td>
+                        {columns.map((c) => (
+                          <td key={c.key} style={{ border: '1px solid #d6d3d1', padding: '3px 6px', textAlign: c.type === 'number' ? 'right' : 'left' }}>
+                            {c.type === 'number' ? formatVND(row[c.key]) : c.type === 'date' ? formatDateVN(row[c.key]) : (row[c.key] ?? '')}
+                          </td>
+                        ))}
+                        {isItems && <td style={{ border: '1px solid #d6d3d1', padding: '3px 6px', textAlign: 'right' }}>{formatVND(lineItemTotal(row))}</td>}
+                      </tr>
+                    ))}
+                  </tbody>
+                  {isItems && (
+                    <tfoot>
+                      <tr>
+                        <td colSpan={columns.length + 1} style={{ border: '1px solid #d6d3d1', padding: '3px 6px', textAlign: 'right', fontWeight: 700 }}>Tổng cộng</td>
+                        <td style={{ border: '1px solid #d6d3d1', padding: '3px 6px', textAlign: 'right', fontWeight: 700 }}>{formatVND(total)}</td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            );
+          }
+          return (
         <div
           key={el.id}
           style={{
             position: 'absolute',
-            left: el.x, top: el.y, width: el.w,
+            left: el.x, top: el.y + shiftFor(el.y), width: el.w,
             fontSize: el.fontSize || 13,
             fontWeight: el.bold ? 700 : 400,
             whiteSpace: 'pre-wrap',
@@ -2846,7 +3045,8 @@ function CustomPrintOutput({ schema, record, project, elements, orientation }) {
             </>
           )}
         </div>
-        ))}
+          );
+        })}
       </div>
     </>
   );
@@ -3276,9 +3476,90 @@ function ProjectStepsEditor({ initialSteps, onCancel, onSave }) {
 /* Trang "Người dùng" — danh bạ + phân quyền chi tiết theo dự án × loại hồ sơ */
 /* ------------------------------------------------------------------ */
 
+/* ---------------- Sửa thông tin người dùng + đặt lại mật khẩu ---------------- */
+
+function UserEditForm({ user, onCancel, onSaveProfile, onResetPassword, onUpdateEmail }) {
+  const [name, setName] = useState(user.full_name || '');
+  const [newEmail, setNewEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [savingName, setSavingName] = useState(false);
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [emailDone, setEmailDone] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [resetDone, setResetDone] = useState(false);
+
+  async function handleSaveName() {
+    if (!name.trim()) return;
+    setSavingName(true);
+    await onSaveProfile(name.trim());
+    setSavingName(false);
+  }
+
+  async function handleSaveEmail() {
+    if (!newEmail.trim()) return;
+    setSavingEmail(true);
+    const ok = await onUpdateEmail(newEmail.trim());
+    setSavingEmail(false);
+    if (ok) { setEmailDone(true); setNewEmail(''); }
+  }
+
+  async function handleReset() {
+    if (newPassword.length < 6) return;
+    setResetting(true);
+    const ok = await onResetPassword(newPassword);
+    setResetting(false);
+    if (ok) { setResetDone(true); setNewPassword(''); }
+  }
+
+  return (
+    <div className="space-y-3 rounded-md bg-stone-50 p-3">
+      <div>
+        <label className="mb-1 block text-xs text-stone-500">Họ tên</label>
+        <div className="flex gap-2">
+          <input value={name} onChange={(e) => setName(e.target.value)} className="flex-1 rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
+          <button onClick={handleSaveName} disabled={savingName}
+            className="rounded-md bg-teal-900 px-3 py-1.5 text-xs text-white hover:bg-teal-800 disabled:opacity-60">
+            {savingName ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Lưu tên'}
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <label className="mb-1 block text-xs text-stone-500">Đổi email đăng nhập (để trống nếu không đổi)</label>
+        <div className="flex gap-2">
+          <input type="email" value={newEmail} onChange={(e) => { setNewEmail(e.target.value); setEmailDone(false); }}
+            placeholder="Email mới" className="flex-1 rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
+          <button onClick={handleSaveEmail} disabled={savingEmail || !newEmail.trim()}
+            className="rounded-md bg-teal-900 px-3 py-1.5 text-xs text-white hover:bg-teal-800 disabled:opacity-60">
+            {savingEmail ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Đổi email'}
+          </button>
+        </div>
+        {emailDone && <p className="mt-1 flex items-center gap-1 text-xs text-teal-700"><CheckCircle2 className="h-3.5 w-3.5" /> Đã đổi email đăng nhập.</p>}
+      </div>
+
+      <div>
+        <label className="mb-1 block text-xs text-stone-500">Đặt lại mật khẩu (để trống nếu không đổi)</label>
+        <div className="flex gap-2">
+          <input type="password" value={newPassword} onChange={(e) => { setNewPassword(e.target.value); setResetDone(false); }}
+            placeholder="Mật khẩu mới (tối thiểu 6 ký tự)" className="flex-1 rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
+          <button onClick={handleReset} disabled={resetting || newPassword.length < 6}
+            className="flex items-center gap-1 rounded-md bg-amber-700 px-3 py-1.5 text-xs text-white hover:bg-amber-800 disabled:opacity-60">
+            {resetting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Đặt lại mật khẩu'}
+          </button>
+        </div>
+        {resetDone && <p className="mt-1 flex items-center gap-1 text-xs text-teal-700"><CheckCircle2 className="h-3.5 w-3.5" /> Đã đặt lại — báo mật khẩu mới cho người dùng.</p>}
+      </div>
+
+      <div className="flex justify-end">
+        <button onClick={onCancel} className="rounded-md border border-stone-300 px-3 py-1 text-xs text-stone-600 hover:bg-white">Đóng</button>
+      </div>
+    </div>
+  );
+}
+
 function UsersView({
   profiles, projects, permissions, myId, nameOf,
-  onCreateUser, onBulkCreateUsers, onRemoveUser, onToggleAdmin,
+  onCreateUser, onBulkCreateUsers, onRemoveUser, onToggleAdmin, onUpdateProfile, onUpdateEmail, onResetPassword,
   onSetPermission, onRemoveUserFromProject, showToast,
 }) {
   const [newUserEmail, setNewUserEmail] = useState('');
@@ -3287,6 +3568,7 @@ function UsersView({
   const [newUserIsAdmin, setNewUserIsAdmin] = useState(false);
   const [creatingUser, setCreatingUser] = useState(false);
   const [confirmRemoveUser, setConfirmRemoveUser] = useState(null);
+  const [editingUserId, setEditingUserId] = useState(null);
 
   const [bulkText, setBulkText] = useState('');
   const [bulkPreview, setBulkPreview] = useState([]);
@@ -3411,23 +3693,38 @@ function UsersView({
         <div className="mt-3 divide-y divide-stone-100">
           {profiles.length === 0 && <div className="py-3 text-xs text-stone-400">Chưa có người dùng nào.</div>}
           {profiles.map((u) => (
-            <div key={u.id} className="flex items-center justify-between py-2">
-              <div className="flex items-center gap-2 text-sm text-stone-700">
-                {u.full_name || '(chưa đặt tên)'}
-                {u.is_admin && <RoleBadge role="admin" />}
-              </div>
-              <div className="flex items-center gap-3">
-                <label className="flex items-center gap-1.5 text-xs text-stone-500">
-                  <input type="checkbox" checked={u.is_admin} onChange={(e) => onToggleAdmin(u.id, e.target.checked)} />
-                  Quản trị viên
-                </label>
-                {u.id !== myId && (
-                  <button onClick={() => handleRemoveUser(u.id)}
-                    className={`rounded p-1 hover:bg-rose-50 ${confirmRemoveUser === u.id ? 'text-rose-700' : 'text-stone-400 hover:text-rose-700'}`}>
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
+            <div key={u.id} className="py-2">
+              {editingUserId === u.id ? (
+                <UserEditForm
+                  user={u}
+                  onCancel={() => setEditingUserId(null)}
+                  onSaveProfile={async (name) => { await onUpdateProfile(u.id, name); }}
+                  onUpdateEmail={(email) => onUpdateEmail(u.id, email)}
+                  onResetPassword={(pwd) => onResetPassword(u.id, pwd)}
+                />
+              ) : (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm text-stone-700">
+                    {u.full_name || '(chưa đặt tên)'}
+                    {u.is_admin && <RoleBadge role="admin" />}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-1.5 text-xs text-stone-500">
+                      <input type="checkbox" checked={u.is_admin} onChange={(e) => onToggleAdmin(u.id, e.target.checked)} />
+                      Quản trị viên
+                    </label>
+                    <button onClick={() => setEditingUserId(u.id)} className="rounded p-1 text-stone-400 hover:bg-stone-100 hover:text-teal-800">
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    {u.id !== myId && (
+                      <button onClick={() => handleRemoveUser(u.id)}
+                        className={`rounded p-1 hover:bg-rose-50 ${confirmRemoveUser === u.id ? 'text-rose-700' : 'text-stone-400 hover:text-rose-700'}`}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -4092,6 +4389,9 @@ function PrintDesigner({ docType, schema, savedLayout, onSave }) {
     { fieldKey: '__project__', label: 'Dự án' },
     ...schema.fields.filter((f) => f.type !== 'items' && f.type !== 'table').map((f) => ({ fieldKey: f.name, label: f.label })),
   ];
+  const tableFields = schema.fields
+    .filter((f) => f.type === 'items' || f.type === 'table')
+    .map((f) => ({ fieldKey: f.name, label: f.label, columns: f.type === 'table' ? f.options : ITEMS_COLUMNS }));
 
   const [elements, setElements] = useState(() => normalizedSaved.elements || []);
   const [selectedId, setSelectedId] = useState(null);
@@ -4101,6 +4401,11 @@ function PrintDesigner({ docType, schema, savedLayout, onSave }) {
   function addFieldElement(fieldKey, label) {
     const id = uid();
     setElements((prev) => [...prev, { id, type: 'field', fieldKey, label, x: 40, y: 40 + prev.length * 32, w: 260, fontSize: 13, bold: false, showLabel: true }]);
+    setSelectedId(id);
+  }
+  function addTableElement(f) {
+    const id = uid();
+    setElements((prev) => [...prev, { id, type: 'table-field', fieldKey: f.fieldKey, label: f.label, x: 40, y: 40 + prev.length * 32 + 100, w: 620, fontSize: 11 }]);
     setSelectedId(id);
   }
   function addTextElement() {
@@ -4141,7 +4446,7 @@ function PrintDesigner({ docType, schema, savedLayout, onSave }) {
   }
 
   const selected = elements.find((el) => el.id === selectedId) || null;
-  const usedFieldKeys = new Set(elements.filter((el) => el.type === 'field').map((el) => el.fieldKey));
+  const usedFieldKeys = new Set(elements.filter((el) => el.type === 'field' || el.type === 'table-field').map((el) => el.fieldKey));
 
   return (
     <div className="grid grid-cols-[220px_1fr_240px] gap-4">
@@ -4169,6 +4474,21 @@ function PrintDesigner({ docType, schema, savedLayout, onSave }) {
             </button>
           ))}
         </div>
+
+        {tableFields.length > 0 && (
+          <>
+            <div className="mt-4 text-xs font-medium uppercase tracking-wide text-stone-400">Bảng dữ liệu</div>
+            <div className="mt-2 space-y-1">
+              {tableFields.map((f) => (
+                <button key={f.fieldKey} onClick={() => addTableElement(f)}
+                  disabled={usedFieldKeys.has(f.fieldKey)}
+                  className="flex w-full items-center justify-between rounded-md border border-stone-200 px-2 py-1.5 text-left text-xs text-stone-700 hover:bg-stone-50 disabled:opacity-30">
+                  {f.label} <Plus className="h-3 w-3 text-teal-700" />
+                </button>
+              ))}
+            </div>
+          </>
+        )}
         <button onClick={addTextElement}
           className="mt-3 flex w-full items-center justify-center gap-1 rounded-md border border-teal-800 py-1.5 text-xs text-teal-900 hover:bg-teal-50">
           <Plus className="h-3.5 w-3.5" /> Thêm văn bản tự do
@@ -4194,7 +4514,11 @@ function PrintDesigner({ docType, schema, savedLayout, onSave }) {
               className={`absolute cursor-move select-none rounded px-1 ${selectedId === el.id ? 'outline outline-2 outline-teal-600' : 'hover:outline hover:outline-1 hover:outline-stone-300'}`}
               style={{ left: el.x, top: el.y, width: el.w, fontSize: el.fontSize, fontWeight: el.bold ? 700 : 400 }}
             >
-              {el.type === 'text' ? el.label : (
+              {el.type === 'text' ? el.label : el.type === 'table-field' ? (
+                <div className="border border-dashed border-stone-400 bg-stone-50/70 px-2 py-3 text-center text-stone-500">
+                  [Bảng] {el.label} — số dòng sẽ hiện đầy đủ khi in thật
+                </div>
+              ) : (
                 <>{el.showLabel !== false && <span className="text-stone-400">{el.label}: </span>}<span className="text-stone-700">(dữ liệu)</span></>
               )}
             </div>
@@ -4217,6 +4541,8 @@ function PrintDesigner({ docType, schema, savedLayout, onSave }) {
             {selected.type === 'text' ? (
               <textarea value={selected.label} onChange={(e) => updateElement(selected.id, { label: e.target.value })}
                 className="w-full rounded-md border border-stone-300 px-2 py-1 text-xs" rows={2} />
+            ) : selected.type === 'table-field' ? (
+              <div className="text-xs text-stone-500">Bảng: {selected.label}<br /><span className="text-stone-400">Toàn bộ dòng &amp; cột sẽ tự in đầy đủ.</span></div>
             ) : (
               <>
                 <div className="text-xs text-stone-500">Trường: {selected.label}</div>
@@ -4236,9 +4562,29 @@ function PrintDesigner({ docType, schema, savedLayout, onSave }) {
               <input type="number" value={selected.fontSize} onChange={(e) => updateElement(selected.id, { fontSize: Number(e.target.value) || 13 })}
                 className="w-full rounded-md border border-stone-300 px-2 py-1 text-xs" />
             </div>
-            <label className="flex items-center gap-1.5 text-xs text-stone-500">
-              <input type="checkbox" checked={!!selected.bold} onChange={(e) => updateElement(selected.id, { bold: e.target.checked })} /> In đậm
-            </label>
+            <div>
+              <label className="text-xs text-stone-500">Canh theo trang</label>
+              <div className="mt-1 flex gap-1">
+                <button onClick={() => updateElement(selected.id, { x: 20 })}
+                  className="flex-1 rounded-md border border-stone-200 py-1 text-xs text-stone-600 hover:bg-stone-50">
+                  Trái
+                </button>
+                <button onClick={() => updateElement(selected.id, { x: Math.round((PAGE_W - selected.w) / 2) })}
+                  className="flex-1 rounded-md border border-stone-200 py-1 text-xs text-stone-600 hover:bg-stone-50">
+                  Giữa
+                </button>
+                <button onClick={() => updateElement(selected.id, { x: Math.round(PAGE_W - selected.w - 20) })}
+                  className="flex-1 rounded-md border border-stone-200 py-1 text-xs text-stone-600 hover:bg-stone-50">
+                  Phải
+                </button>
+              </div>
+              <p className="mt-1 text-[11px] text-stone-400">Canh cả khối theo chiều ngang trang in — không phải canh chữ trong ô.</p>
+            </div>
+            {selected.type !== 'table-field' && (
+              <label className="flex items-center gap-1.5 text-xs text-stone-500">
+                <input type="checkbox" checked={!!selected.bold} onChange={(e) => updateElement(selected.id, { bold: e.target.checked })} /> In đậm
+              </label>
+            )}
             <button onClick={() => removeElement(selected.id)}
               className="mt-2 flex w-full items-center justify-center gap-1 rounded-md border border-rose-300 py-1.5 text-xs text-rose-700 hover:bg-rose-50">
               <Trash2 className="h-3.5 w-3.5" /> Xóa phần tử này
@@ -4494,6 +4840,119 @@ function AssignmentFillView({ schema, record, project, assignment, onSaveDraft, 
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Trang "Đơn vị" — tạo đơn vị, gán nhân viên, chọn lãnh đạo đơn vị     */
+/* ------------------------------------------------------------------ */
+
+function UnitsView({ units, profiles, onCreateUnit, onDeleteUnit, onSetLeader, onAssignUser, showToast }) {
+  const [newUnitName, setNewUnitName] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [addMemberDraft, setAddMemberDraft] = useState({}); // { [unitId]: userId }
+
+  async function handleCreate(e) {
+    e.preventDefault();
+    if (!newUnitName.trim()) return;
+    if (units.some((u) => u.ten.toLowerCase() === newUnitName.trim().toLowerCase())) {
+      showToast('Đơn vị này đã tồn tại.', 'error');
+      return;
+    }
+    await onCreateUnit(newUnitName.trim());
+    setNewUnitName('');
+  }
+
+  async function handleDelete(id) {
+    if (confirmDelete !== id) {
+      setConfirmDelete(id);
+      setTimeout(() => setConfirmDelete((c) => (c === id ? null : c)), 3000);
+      return;
+    }
+    await onDeleteUnit(id);
+    setConfirmDelete(null);
+  }
+
+  return (
+    <div className="mx-auto max-w-4xl px-8 py-8">
+      <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">Đơn vị</div>
+      <p className="mt-1 text-sm text-stone-500">
+        Chia người dùng theo đơn vị/phòng ban. Người được đặt làm <strong>Lãnh đạo đơn vị</strong> sẽ tự động xem và xác nhận được
+        hồ sơ do nhân viên trong đơn vị mình tạo, không cần cấp quyền riêng theo dự án.
+      </p>
+
+      <div className="mt-6 rounded-lg border border-stone-200 bg-white p-5">
+        <div className="flex items-center gap-2 text-sm font-medium text-stone-700">
+          <Users className="h-4 w-4 text-teal-800" /> Tạo đơn vị mới
+        </div>
+        <form onSubmit={handleCreate} className="mt-3 flex gap-2">
+          <input value={newUnitName} onChange={(e) => setNewUnitName(e.target.value)} placeholder="Tên đơn vị, ví dụ: Phòng Kỹ thuật"
+            className="flex-1 rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
+          <button type="submit" className="flex items-center gap-1 rounded-md bg-teal-900 px-3 py-1.5 text-sm text-white hover:bg-teal-800">
+            <Plus className="h-3.5 w-3.5" /> Tạo
+          </button>
+        </form>
+      </div>
+
+      <div className="mt-6 space-y-4">
+        {units.length === 0 && (
+          <div className="rounded-lg border border-dashed border-stone-300 py-10 text-center text-sm text-stone-400">Chưa có đơn vị nào.</div>
+        )}
+        {units.map((u) => {
+          const members = profiles.filter((p) => p.unit_id === u.id);
+          const available = profiles.filter((p) => p.unit_id !== u.id);
+          const draftUserId = addMemberDraft[u.id] || '';
+          return (
+            <div key={u.id} className="rounded-lg border border-stone-200 bg-white p-5">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-semibold text-teal-950">{u.ten}</div>
+                <button onClick={() => handleDelete(u.id)}
+                  className={`rounded p-1.5 hover:bg-rose-50 ${confirmDelete === u.id ? 'text-rose-700' : 'text-stone-400 hover:text-rose-700'}`}>
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="mt-3">
+                <label className="mb-1 block text-xs font-medium text-stone-600">Lãnh đạo đơn vị</label>
+                <select value={u.leaderId || ''} onChange={(e) => onSetLeader(u.id, e.target.value || null)}
+                  className="w-full rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm">
+                  <option value="">— Chưa chọn —</option>
+                  {members.map((m) => <option key={m.id} value={m.id}>{m.full_name}</option>)}
+                </select>
+                {members.length === 0 && <p className="mt-1 text-xs text-stone-400">Thêm thành viên vào đơn vị trước để chọn lãnh đạo.</p>}
+              </div>
+
+              <div className="mt-3">
+                <div className="text-xs font-medium uppercase tracking-wide text-stone-400">Thành viên</div>
+                <div className="mt-1.5 space-y-1">
+                  {members.length === 0 && <div className="text-xs text-stone-400">Chưa có ai trong đơn vị này.</div>}
+                  {members.map((m) => (
+                    <div key={m.id} className="flex items-center justify-between rounded-md bg-stone-50 px-3 py-1.5 text-sm">
+                      <span>{m.full_name}{u.leaderId === m.id && <span className="ml-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">Lãnh đạo</span>}</span>
+                      <button onClick={() => onAssignUser(m.id, null)} className="text-stone-400 hover:text-rose-700"><X className="h-3.5 w-3.5" /></button>
+                    </div>
+                  ))}
+                </div>
+                {available.length > 0 && (
+                  <div className="mt-2 flex gap-2">
+                    <select value={draftUserId} onChange={(e) => setAddMemberDraft((prev) => ({ ...prev, [u.id]: e.target.value }))}
+                      className="flex-1 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm">
+                      <option value="">— Chọn người dùng để thêm —</option>
+                      {available.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+                    </select>
+                    <button
+                      onClick={() => { if (draftUserId) { onAssignUser(draftUserId, u.id); setAddMemberDraft((prev) => ({ ...prev, [u.id]: '' })); } }}
+                      className="flex items-center gap-1 rounded-md border border-teal-800 px-3 py-1.5 text-sm text-teal-900 hover:bg-teal-50">
+                      <UserPlus className="h-3.5 w-3.5" /> Thêm
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
