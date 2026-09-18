@@ -4,7 +4,7 @@ import {
   Printer, Pencil, Plus, X, ChevronLeft, LayoutDashboard, Loader2,
   Save, Inbox, FolderKanban, Shield, UserPlus, EyeOff, Eye, Users, History,
   UserCog, Mail, Lock, Unlock, LogIn, LogOut, AlertCircle, Upload, CheckCircle2, XCircle,
-  Tags, Download, FileSpreadsheet, Settings2, Send, ClipboardCheck, FileType2,
+  Tags, Download, FileSpreadsheet, Settings2, Send, ClipboardCheck, FileType2, Palette,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import PizZip from 'pizzip';
@@ -24,23 +24,11 @@ const DOC_TYPES = {
     docTitle: 'PHIẾU THU THẬP BÁO GIÁ',
     signLeft: 'Người thu thập',
     signRight: 'Người kiểm tra',
-    dateField: 'ngayBaoGia',
-    fields: [
-      { name: 'maGoiThau', label: 'Mã gói thầu', type: 'text', required: true },
-      { name: 'tenGoiThau', label: 'Tên gói thầu', type: 'text', required: true, wide: true },
-      { name: 'tenDonVi', label: 'Tên đơn vị báo giá', type: 'text', required: true },
-      { name: 'maSoThue', label: 'Mã số thuế', type: 'text' },
-      { name: 'diaChi', label: 'Địa chỉ', type: 'text', wide: true },
-      { name: 'ngayBaoGia', label: 'Ngày báo giá', type: 'date' },
-      { name: 'nguoiThuThap', label: 'Người thu thập', type: 'text' },
-      { name: 'hangMuc', label: 'Hạng mục hàng hóa / dịch vụ', type: 'items', wide: true },
-      { name: 'ghiChu', label: 'Ghi chú', type: 'textarea', wide: true },
-    ],
+    dateField: null,
+    fields: [],
     listColumns: [
       { key: 'maGoiThau', label: 'Mã gói thầu' },
       { key: 'tenGoiThau', label: 'Tên gói thầu' },
-      { key: 'tenDonVi', label: 'Đơn vị báo giá' },
-      { key: 'ngayBaoGia', label: 'Ngày báo giá', date: true },
     ],
   },
   ho_so_yeu_cau: {
@@ -51,27 +39,11 @@ const DOC_TYPES = {
     docTitle: 'HỒ SƠ YÊU CẦU CHỈ ĐỊNH THẦU',
     signLeft: 'Người lập',
     signRight: 'Người phê duyệt',
-    dateField: 'ngayPhatHanh',
-    fields: [
-      { name: 'maGoiThau', label: 'Mã gói thầu', type: 'text', required: true },
-      { name: 'tenGoiThau', label: 'Tên gói thầu', type: 'text', required: true, wide: true },
-      { name: 'chuDauTu', label: 'Chủ đầu tư', type: 'text', wide: true },
-      { name: 'giaGoiThau', label: 'Giá gói thầu (VNĐ)', type: 'number' },
-      { name: 'hinhThuc', label: 'Hình thức chỉ định thầu', type: 'select',
-        options: ['Chỉ định thầu rút gọn', 'Chỉ định thầu thông thường'] },
-      { name: 'thoiGianThucHien', label: 'Thời gian thực hiện', type: 'text' },
-      { name: 'ngayPhatHanh', label: 'Ngày phát hành', type: 'date' },
-      { name: 'ngayDongThau', label: 'Ngày đóng thầu', type: 'date' },
-      { name: 'tieuChuanNangLuc', label: 'Tiêu chuẩn đánh giá năng lực, kinh nghiệm', type: 'textarea', wide: true },
-      { name: 'tieuChuanKyThuat', label: 'Tiêu chuẩn đánh giá kỹ thuật', type: 'textarea', wide: true },
-      { name: 'dieuKienHopDong', label: 'Điều kiện về hợp đồng', type: 'textarea', wide: true },
-      { name: 'nguoiLap', label: 'Người lập', type: 'text' },
-    ],
+    dateField: null,
+    fields: [],
     listColumns: [
       { key: 'maGoiThau', label: 'Mã gói thầu' },
       { key: 'tenGoiThau', label: 'Tên gói thầu' },
-      { key: 'hinhThuc', label: 'Hình thức' },
-      { key: 'ngayPhatHanh', label: 'Ngày phát hành', date: true },
     ],
   },
   bien_ban: {
@@ -82,25 +54,11 @@ const DOC_TYPES = {
     docTitle: 'BIÊN BẢN THƯƠNG THẢO HỢP ĐỒNG',
     signLeft: 'Đại diện chủ đầu tư',
     signRight: 'Đại diện nhà thầu',
-    dateField: 'ngayThuongThao',
-    fields: [
-      { name: 'maGoiThau', label: 'Mã gói thầu', type: 'text', required: true },
-      { name: 'tenGoiThau', label: 'Tên gói thầu', type: 'text', required: true, wide: true },
-      { name: 'tenNhaThau', label: 'Tên nhà thầu', type: 'text', wide: true },
-      { name: 'ngayThuongThao', label: 'Ngày thương thảo', type: 'date' },
-      { name: 'diaDiem', label: 'Địa điểm', type: 'text' },
-      { name: 'daiDienChuDauTu', label: 'Đại diện chủ đầu tư', type: 'text' },
-      { name: 'daiDienNhaThau', label: 'Đại diện nhà thầu', type: 'text' },
-      { name: 'giaTruocThuongThao', label: 'Giá trước thương thảo (VNĐ)', type: 'number' },
-      { name: 'giaSauThuongThao', label: 'Giá sau thương thảo (VNĐ)', type: 'number' },
-      { name: 'noiDungThuongThao', label: 'Nội dung thương thảo', type: 'textarea', wide: true },
-      { name: 'ketLuan', label: 'Kết luận', type: 'textarea', wide: true },
-    ],
+    dateField: null,
+    fields: [],
     listColumns: [
       { key: 'maGoiThau', label: 'Mã gói thầu' },
-      { key: 'tenNhaThau', label: 'Nhà thầu' },
-      { key: 'ngayThuongThao', label: 'Ngày thương thảo', date: true },
-      { key: 'giaSauThuongThao', label: 'Giá sau TT', money: true },
+      { key: 'tenGoiThau', label: 'Tên gói thầu' },
     ],
   },
   hop_dong: {
@@ -111,29 +69,11 @@ const DOC_TYPES = {
     docTitle: 'HỢP ĐỒNG',
     signLeft: 'Đại diện Bên A',
     signRight: 'Đại diện Bên B',
-    dateField: 'ngayKy',
-    fields: [
-      { name: 'soHopDong', label: 'Số hợp đồng', type: 'text', required: true },
-      { name: 'tenGoiThau', label: 'Tên gói thầu', type: 'text', required: true, wide: true },
-      { name: 'benA_TenDonVi', label: 'Bên A – Tên đơn vị', type: 'text', wide: true },
-      { name: 'benA_DaiDien', label: 'Bên A – Người đại diện', type: 'text' },
-      { name: 'benA_ChucVu', label: 'Bên A – Chức vụ', type: 'text' },
-      { name: 'benB_TenDonVi', label: 'Bên B – Tên đơn vị', type: 'text', wide: true },
-      { name: 'benB_DaiDien', label: 'Bên B – Người đại diện', type: 'text' },
-      { name: 'benB_ChucVu', label: 'Bên B – Chức vụ', type: 'text' },
-      { name: 'benB_MaSoThue', label: 'Bên B – Mã số thuế', type: 'text' },
-      { name: 'giaTriHopDong', label: 'Giá trị hợp đồng (VNĐ)', type: 'number' },
-      { name: 'hinhThucHopDong', label: 'Hình thức hợp đồng', type: 'select',
-        options: ['Trọn gói', 'Theo đơn giá cố định', 'Theo thời gian', 'Theo tỷ lệ phần trăm'] },
-      { name: 'thoiGianThucHien', label: 'Thời gian thực hiện', type: 'text' },
-      { name: 'ngayKy', label: 'Ngày ký', type: 'date' },
-      { name: 'dieuKhoanChinh', label: 'Điều khoản chính', type: 'textarea', wide: true },
-    ],
+    dateField: null,
+    fields: [],
     listColumns: [
-      { key: 'soHopDong', label: 'Số hợp đồng' },
+      { key: 'maGoiThau', label: 'Mã gói thầu' },
       { key: 'tenGoiThau', label: 'Tên gói thầu' },
-      { key: 'benB_TenDonVi', label: 'Bên B' },
-      { key: 'ngayKy', label: 'Ngày ký', date: true },
     ],
   },
 };
@@ -152,7 +92,14 @@ const ITEMS_COLUMNS = [
   { key: 'donGia', label: 'Đơn giá', type: 'number' },
 ];
 // Schema giả cho "Gói thầu" — tương tự, chỉ chứa trường tùy chỉnh
-const GOI_THAU_BASE_SCHEMA = { key: 'goi_thau', label: 'Gói thầu (thông tin riêng)', fields: [] };
+const GOI_THAU_BASE_SCHEMA = {
+  key: 'goi_thau',
+  label: 'Gói thầu (thông tin riêng)',
+  fields: [
+    { name: 'giaGoiThau', label: 'Giá gói thầu (VNĐ)', type: 'number' },
+    { name: 'thoiGianThucHien', label: 'Thời gian thực hiện gói thầu', type: 'text' },
+  ],
+};
 
 const ROLE_LABELS = { admin: 'Quản trị viên', editor: 'Biên tập', viewer: 'Chỉ xem' };
 const ROLE_BADGE_CLASS = {
@@ -193,6 +140,56 @@ function formatVND(n) {
   const num = Number(n);
   if (Number.isNaN(num)) return '';
   return num.toLocaleString('vi-VN') + ' đ';
+}
+
+// Chuyển số thành chữ tiếng Việt, ví dụ 15000000 -> "Mười lăm triệu đồng"
+function soTienBangChu(n) {
+  const num = Math.round(Number(n));
+  if (Number.isNaN(num)) return '';
+  if (num === 0) return 'Không đồng';
+  const isNegative = num < 0;
+  let value = Math.abs(num);
+
+  const CHU_SO = ['không', 'một', 'hai', 'ba', 'bốn', 'năm', 'sáu', 'bảy', 'tám', 'chín'];
+
+  function docBaSo(baSo, isFirstGroup) {
+    const tram = Math.floor(baSo / 100);
+    const chuc = Math.floor((baSo % 100) / 10);
+    const donvi = baSo % 10;
+    let parts = [];
+    if (tram > 0 || !isFirstGroup) {
+      parts.push(CHU_SO[tram] + ' trăm');
+    }
+    if (chuc === 0) {
+      if (donvi > 0 && (tram > 0 || !isFirstGroup)) parts.push('lẻ');
+    } else if (chuc === 1) {
+      parts.push('mười');
+    } else {
+      parts.push(CHU_SO[chuc] + ' mươi');
+    }
+    if (donvi === 1 && chuc >= 2) parts.push('mốt');
+    else if (donvi === 5 && chuc >= 1) parts.push('lăm');
+    else if (donvi > 0) parts.push(CHU_SO[donvi]);
+    return parts.join(' ');
+  }
+
+  const NHOM = ['', ' nghìn', ' triệu', ' tỷ'];
+  let groups = [];
+  while (value > 0) {
+    groups.push(value % 1000);
+    value = Math.floor(value / 1000);
+  }
+
+  let resultParts = [];
+  for (let i = groups.length - 1; i >= 0; i--) {
+    if (groups[i] === 0) continue;
+    const isFirstGroup = i === groups.length - 1;
+    resultParts.push(docBaSo(groups[i], isFirstGroup) + NHOM[i]);
+  }
+
+  let result = resultParts.join(' ').replace(/\s+/g, ' ').trim();
+  result = result.charAt(0).toUpperCase() + result.slice(1);
+  return (isNegative ? 'Âm ' : '') + result + ' đồng';
 }
 
 function formatDateVN(d) {
@@ -637,6 +634,7 @@ export default function App() {
   const [goiThauList, setGoiThauList] = useState({}); // { [projectId]: [{ id, projectId, maGoiThau, tenGoiThau, data, createdAt }] }
   const [templateFieldMode, setTemplateFieldModeState] = useState({}); // { [docType]: { [projectTypeId]: 'extend' | 'replace' } }
   const [units, setUnits] = useState([]); // [{ id, ten, leaderId }]
+  const [appSettings, setAppSettings] = useState({}); // { background: { type: 'color'|'image', value } }
   const [printTemplates, setPrintTemplates] = useState({}); // { [docType]: { layout: [...] } }
   const [docxTemplates, setDocxTemplates] = useState({}); // { [docType]: { storage_path } }
   const [myAssignments, setMyAssignments] = useState([]); // giao việc điền thông tin (của tôi hoặc do tôi giao)
@@ -696,9 +694,9 @@ export default function App() {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      const [profileRes, profilesRes, projectsRes, permsRes, typesRes, auditRes, templatesRes, customFieldsRes, printTemplatesRes, hiddenFieldsRes, fieldOverridesRes, docxTemplatesRes, assignmentsRes, projectStepsRes, goiThauRes, templateModeRes, unitsRes] = await Promise.all([
+      const [profileRes, profilesRes, projectsRes, permsRes, typesRes, auditRes, templatesRes, customFieldsRes, printTemplatesRes, hiddenFieldsRes, fieldOverridesRes, docxTemplatesRes, assignmentsRes, projectStepsRes, goiThauRes, templateModeRes, unitsRes, appSettingsRes] = await Promise.all([
         supabase.from('profiles').select('id, full_name, is_admin').eq('id', session.user.id).single(),
-        supabase.from('profiles').select('id, full_name, is_admin, unit_id').order('full_name'),
+        supabase.from('profiles').select('id, full_name, is_admin, unit_id, email').order('full_name'),
         supabase.from('projects').select('id, ten, ma_du_an, mo_ta, type_id, data, created_at').order('created_at'),
         supabase.from('project_permissions').select('project_id, user_id, doc_type, can_view, can_add, can_edit, can_lock, can_delete'),
         supabase.from('project_types').select('id, ten').order('ten'),
@@ -709,11 +707,12 @@ export default function App() {
         supabase.from('hidden_builtin_fields').select('doc_type, field_name, project_type_id'),
         supabase.from('field_overrides').select('doc_type, field_name, label, field_type, required, options, project_type_id'),
         supabase.from('docx_templates').select('doc_type, project_type_id, storage_path'),
-        supabase.from('document_assignments').select('id, document_id, doc_type, assigned_to, assigned_by, field_keys, status, created_at, completed_at'),
+        supabase.from('document_assignments').select('id, document_id, doc_type, assigned_to, unit_id, assigned_by, field_keys, status, created_at, submitted_at, completed_at'),
         supabase.from('project_document_types').select('id, project_id, doc_type, sort_order, completed'),
         supabase.from('goi_thau').select('id, project_id, ma_goi_thau, ten_goi_thau, data, created_at'),
         supabase.from('template_field_mode').select('doc_type, project_type_id, mode'),
         supabase.from('units').select('id, ten, leader_id'),
+        supabase.from('app_settings').select('key, value'),
       ]);
 
       const nextRecords = {};
@@ -760,6 +759,7 @@ export default function App() {
       });
       setTemplateFieldModeState(modeByType);
       setUnits((unitsRes.data || []).map((u) => ({ id: u.id, ten: u.ten, leaderId: u.leader_id })));
+      setAppSettings(Object.fromEntries((appSettingsRes.data || []).map((s) => [s.key, s.value])));
       setPermissions((permsRes.data || []).map((p) => ({
         projectId: p.project_id, userId: p.user_id, docType: p.doc_type,
         can_view: p.can_view, can_add: p.can_add, can_edit: p.can_edit, can_lock: p.can_lock, can_delete: p.can_delete,
@@ -788,8 +788,8 @@ export default function App() {
       });
       setDocxTemplates(dtByType);
       setMyAssignments((assignmentsRes.data || []).map((a) => ({
-        id: a.id, documentId: a.document_id, docType: a.doc_type, assignedTo: a.assigned_to, assignedBy: a.assigned_by,
-        fieldKeys: a.field_keys, status: a.status, createdAt: a.created_at, completedAt: a.completed_at,
+        id: a.id, documentId: a.document_id, docType: a.doc_type, assignedTo: a.assigned_to, unitId: a.unit_id, assignedBy: a.assigned_by,
+        fieldKeys: a.field_keys, status: a.status, createdAt: a.created_at, submittedAt: a.submitted_at, completedAt: a.completed_at,
       })));
       setRecords(nextRecords);
       setLoading(false);
@@ -1239,6 +1239,16 @@ export default function App() {
     showToast('Đã cập nhật đơn vị cho người dùng.');
   }
 
+  /* ---------------- cài đặt giao diện (nền màn hình dữ liệu) ---------------- */
+  async function saveAppSetting(key, value) {
+    const { error } = await supabase
+      .from('app_settings')
+      .upsert({ key, value, updated_by: myId, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    if (error) { showToast('Không thể lưu cài đặt: ' + error.message, 'error'); return; }
+    setAppSettings((prev) => ({ ...prev, [key]: value }));
+    showToast('Đã lưu cài đặt giao diện.');
+  }
+
   // rows: [{ duAnId, ...các trường dữ liệu }] — dùng khi nhập hàng loạt từ Excel
   async function bulkImportDocuments(typeKey, rows) {
     // Cache cục bộ trong lần nhập này để tránh tạo trùng gói thầu mới nếu nhiều dòng
@@ -1458,26 +1468,52 @@ export default function App() {
     }
   }
 
-  async function createAssignment(documentId, docType, assignedToUserId, fieldKeys, recordTitle) {
+  async function createAssignment(documentId, docType, target, fieldKeys, recordTitle) {
+    // target: { type: 'user', userId } hoặc { type: 'unit', unitId }
+    const isUnit = target.type === 'unit';
     const { data, error } = await supabase
       .from('document_assignments')
-      .insert({ document_id: documentId, doc_type: docType, assigned_to: assignedToUserId, assigned_by: myId, field_keys: fieldKeys })
+      .insert({
+        document_id: documentId, doc_type: docType,
+        assigned_to: isUnit ? null : target.userId,
+        unit_id: isUnit ? target.unitId : null,
+        assigned_by: myId, field_keys: fieldKeys,
+      })
       .select()
       .single();
     if (error) { showToast('Không thể giao việc: ' + error.message, 'error'); return; }
     setMyAssignments((prev) => [...prev, {
-      id: data.id, documentId: data.document_id, docType: data.doc_type, assignedTo: data.assigned_to, assignedBy: data.assigned_by,
-      fieldKeys: data.field_keys, status: data.status, createdAt: data.created_at, completedAt: data.completed_at,
+      id: data.id, documentId: data.document_id, docType: data.doc_type, assignedTo: data.assigned_to,
+      unitId: data.unit_id, assignedBy: data.assigned_by,
+      fieldKeys: data.field_keys, status: data.status, createdAt: data.created_at, submittedAt: data.submitted_at, completedAt: data.completed_at,
     }]);
     const link = `${window.location.origin}${window.location.pathname}?assignment=${data.id}`;
-    await sendNotificationEmail(
-      assignedToUserId,
-      `Bạn được giao điền thông tin: ${recordTitle || DOC_TYPES[docType].label}`,
-      `<p>${myProfile.full_name} đã giao cho bạn điền một phần thông tin trong hồ sơ "<b>${recordTitle || DOC_TYPES[docType].label}</b>".</p>
-       <p><a href="${link}">Bấm vào đây để điền thông tin</a></p>`
-    );
-    showToast('Đã giao việc và gửi email thông báo.');
-    appendLog('assign_field', `${myProfile.full_name} đã giao điền thông tin (${fieldKeys.length} trường) cho "${nameOf(assignedToUserId)}" trong hồ sơ "${recordTitle || ''}".`);
+    const title = recordTitle || DOC_TYPES[docType].label;
+
+    if (isUnit) {
+      const unit = units.find((u) => u.id === target.unitId);
+      const members = profiles.filter((p) => p.unit_id === target.unitId);
+      for (const member of members) {
+        await sendNotificationEmail(
+          member.id,
+          `Đơn vị của bạn được giao điền thông tin: ${title}`,
+          `<p>${myProfile.full_name} đã giao cho đơn vị <b>${unit?.ten || ''}</b> điền một phần thông tin trong hồ sơ "<b>${title}</b>".</p>
+           <p>Bất kỳ ai trong đơn vị có thể nhận và điền. Sau khi điền xong, lãnh đạo đơn vị sẽ xác nhận.</p>
+           <p><a href="${link}">Bấm vào đây để điền thông tin</a></p>`
+        );
+      }
+      showToast(`Đã giao việc cho đơn vị "${unit?.ten || ''}" và gửi email cho ${members.length} thành viên.`);
+      appendLog('assign_field_unit', `${myProfile.full_name} đã giao điền thông tin (${fieldKeys.length} trường) cho đơn vị "${unit?.ten || ''}" trong hồ sơ "${title}".`);
+    } else {
+      await sendNotificationEmail(
+        target.userId,
+        `Bạn được giao điền thông tin: ${title}`,
+        `<p>${myProfile.full_name} đã giao cho bạn điền một phần thông tin trong hồ sơ "<b>${title}</b>".</p>
+         <p><a href="${link}">Bấm vào đây để điền thông tin</a></p>`
+      );
+      showToast('Đã giao việc và gửi email thông báo.');
+      appendLog('assign_field', `${myProfile.full_name} đã giao điền thông tin (${fieldKeys.length} trường) cho "${nameOf(target.userId)}" trong hồ sơ "${title}".`);
+    }
     return data.id;
   }
 
@@ -1507,6 +1543,41 @@ export default function App() {
     showToast('Đã xác nhận hoàn thành và gửi lại cho người giao việc.');
     appendLog('complete_assignment', `${myProfile.full_name} đã hoàn thành phần điền thông tin được giao trong hồ sơ "${recordTitle || ''}".`);
   }
+
+  // Nhân viên trong đơn vị nhận việc: điền xong, nộp cho lãnh đạo đơn vị duyệt
+  async function submitAssignmentForReview(assignment, typeKey, recordTitle) {
+    const { error } = await supabase
+      .from('document_assignments')
+      .update({ assigned_to: myId, status: 'submitted', submitted_at: new Date().toISOString() })
+      .eq('id', assignment.id);
+    if (error) { showToast('Không thể nộp: ' + error.message, 'error'); return; }
+    setMyAssignments((prev) => prev.map((a) => (a.id === assignment.id ? { ...a, assignedTo: myId, status: 'submitted', submittedAt: new Date().toISOString() } : a)));
+    const unit = units.find((u) => u.id === assignment.unitId);
+    if (unit?.leaderId) {
+      await sendNotificationEmail(
+        unit.leaderId,
+        `Cần duyệt: ${recordTitle || DOC_TYPES[typeKey].label}`,
+        `<p>${myProfile.full_name} đã điền xong phần được giao trong hồ sơ "<b>${recordTitle || DOC_TYPES[typeKey].label}</b>" (đơn vị ${unit.ten}) và đang chờ bạn xác nhận.</p>`
+      );
+    }
+    showToast('Đã nộp cho lãnh đạo đơn vị duyệt.');
+    appendLog('submit_assignment', `${myProfile.full_name} đã nộp phần điền thông tin trong hồ sơ "${recordTitle || ''}" để lãnh đạo đơn vị duyệt.`);
+  }
+
+  // Lãnh đạo đơn vị duyệt phần nhân viên đã nộp -> báo lại cho người giao việc ban đầu
+  async function approveAssignment(assignment, typeKey, recordTitle) {
+    const { error } = await supabase.from('document_assignments').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', assignment.id);
+    if (error) { showToast('Không thể duyệt: ' + error.message, 'error'); return; }
+    setMyAssignments((prev) => prev.map((a) => (a.id === assignment.id ? { ...a, status: 'completed', completedAt: new Date().toISOString() } : a)));
+    await sendNotificationEmail(
+      assignment.assignedBy,
+      `Đơn vị đã hoàn thành: ${recordTitle || DOC_TYPES[typeKey].label}`,
+      `<p>Lãnh đạo đơn vị (${myProfile.full_name}) đã xác nhận hoàn thành phần điền thông tin trong hồ sơ "<b>${recordTitle || DOC_TYPES[typeKey].label}</b>" và gửi lại cho bạn.</p>`
+    );
+    showToast('Đã duyệt và gửi lại cho người giao việc.');
+    appendLog('approve_assignment', `${myProfile.full_name} đã duyệt phần điền thông tin trong hồ sơ "${recordTitle || ''}" (đơn vị).`);
+  }
+
 
   /* ---------------- project types (admin only) ---------------- */
   async function createProjectType(ten) {
@@ -1654,6 +1725,7 @@ export default function App() {
   async function updateUserEmail(userId, newEmail) {
     const { ok, result } = await callUserFunction({ action: 'update_email', user_id: userId, new_email: newEmail });
     if (!ok) { showToast('Không thể đổi email: ' + (result.error || ''), 'error'); return false; }
+    setProfiles((prev) => prev.map((p) => (p.id === userId ? { ...p, email: newEmail } : p)));
     showToast(`Đã đổi email cho "${nameOf(userId)}".`);
     appendLog('update_email', `${myProfile.full_name} đã đổi email đăng nhập cho "${nameOf(userId)}".`);
     return true;
@@ -1715,11 +1787,17 @@ export default function App() {
               <ClipboardCheck className="h-4 w-4" />
               Nhiệm vụ của tôi
             </span>
-            {myAssignments.filter((a) => a.assignedTo === myId && a.status === 'pending').length > 0 && (
-              <span className="rounded-full bg-amber-500 px-1.5 text-xs text-white">
-                {myAssignments.filter((a) => a.assignedTo === myId && a.status === 'pending').length}
-              </span>
-            )}
+            {(() => {
+              const myUnitId = profiles.find((p) => p.id === myId)?.unit_id;
+              const leaderUnitIds = new Set(units.filter((u) => u.leaderId === myId).map((u) => u.id));
+              const count = myAssignments.filter((a) =>
+                (a.status === 'pending' && (a.assignedTo === myId || (a.unitId && a.unitId === myUnitId))) ||
+                (a.status === 'submitted' && a.unitId && leaderUnitIds.has(a.unitId))
+              ).length;
+              return count > 0 && (
+                <span className="rounded-full bg-amber-500 px-1.5 text-xs text-white">{count}</span>
+              );
+            })()}
           </button>
           {amAdmin && (
             <button
@@ -1763,6 +1841,17 @@ export default function App() {
             >
               <Users className="h-4 w-4" />
               Đơn vị
+            </button>
+          )}
+          {amAdmin && (
+            <button
+              onClick={() => setView('appearance')}
+              className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
+                view === 'appearance' ? 'bg-teal-800/70 text-white' : 'text-teal-200 hover:bg-teal-900/60'
+              }`}
+            >
+              <Palette className="h-4 w-4" />
+              Giao diện
             </button>
           )}
           {amAdmin && (
@@ -1843,7 +1932,16 @@ export default function App() {
       </aside>
 
       {/* Main */}
-      <main className="flex-1 overflow-y-auto">
+      <main
+        className="flex-1 overflow-y-auto"
+        style={
+          appSettings.background?.type === 'image'
+            ? { backgroundImage: `url(${appSettings.background.value})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundAttachment: 'fixed' }
+            : appSettings.background?.type === 'color'
+            ? { backgroundColor: appSettings.background.value }
+            : undefined
+        }
+      >
         {view === 'dashboard' && (
           <Dashboard
             records={records}
@@ -1860,9 +1958,17 @@ export default function App() {
 
         {view === 'my-assignments' && (
           <MyAssignmentsView
-            assignments={myAssignments.filter((a) => a.assignedTo === myId)}
+            assignments={myAssignments.filter((a) =>
+              a.assignedTo === myId ||
+              (a.unitId && a.unitId === profiles.find((p) => p.id === myId)?.unit_id) ||
+              (a.unitId && units.some((u) => u.id === a.unitId && u.leaderId === myId))
+            )}
             records={records}
             nameOf={nameOf}
+            unitsById={Object.fromEntries(units.map((u) => [u.id, u]))}
+            myId={myId}
+            myUnitId={profiles.find((p) => p.id === myId)?.unit_id}
+            myLeaderUnitIds={new Set(units.filter((u) => u.leaderId === myId).map((u) => u.id))}
             onOpen={(assignment) => { setActiveType(assignment.docType); setActiveAssignmentId(assignment.id); setView('fill-assignment'); }}
           />
         )}
@@ -1874,14 +1980,19 @@ export default function App() {
             return <div className="p-10 text-center text-stone-400">Không tìm thấy nhiệm vụ này (có thể đã bị xóa).</div>;
           }
           const proj = projectById(projects, rec.duAnId);
+          const title = rec.tenGoiThau || rec.soHopDong || rec.maGoiThau;
+          const isLeaderReview = !!assignment.unitId && assignment.status === 'submitted' && units.some((u) => u.id === assignment.unitId && u.leaderId === myId);
           return (
             <AssignmentFillView
               schema={getSchema(assignment.docType, proj?.typeId)}
               record={rec}
               project={proj}
               assignment={assignment}
+              isLeaderReview={isLeaderReview}
               onSaveDraft={(patch) => saveAssignmentDraft(assignment, assignment.docType, patch)}
-              onComplete={() => completeAssignment(assignment, assignment.docType, rec.tenGoiThau || rec.soHopDong || rec.maGoiThau)}
+              onComplete={() => completeAssignment(assignment, assignment.docType, title)}
+              onSubmitForReview={() => submitAssignmentForReview(assignment, assignment.docType, title)}
+              onApprove={() => approveAssignment(assignment, assignment.docType, title)}
               onBack={() => setView('my-assignments')}
             />
           );
@@ -1965,10 +2076,11 @@ export default function App() {
           <AssignFieldsModal
             schema={getSchema(assigningRecord.docType, projectById(projects, assigningRecord.record.duAnId)?.typeId)}
             profiles={profiles.filter((p) => p.id !== myId)}
+            units={units}
             onClose={() => setAssigningRecord(null)}
-            onAssign={async (userId, fieldKeys) => {
+            onAssign={async (target, fieldKeys) => {
               const title = assigningRecord.record.tenGoiThau || assigningRecord.record.soHopDong || assigningRecord.record.maGoiThau;
-              await createAssignment(assigningRecord.record.id, assigningRecord.docType, userId, fieldKeys, title);
+              await createAssignment(assigningRecord.record.id, assigningRecord.docType, target, fieldKeys, title);
               setAssigningRecord(null);
             }}
           />
@@ -2046,6 +2158,13 @@ export default function App() {
             onSetLeader={setUnitLeader}
             onAssignUser={assignUserToUnit}
             showToast={showToast}
+          />
+        )}
+
+        {view === 'appearance' && amAdmin && (
+          <AppearanceView
+            background={appSettings.background}
+            onSave={(value) => saveAppSetting('background', value)}
           />
         )}
 
@@ -2841,7 +2960,12 @@ function DetailView({ schema, record, project, canEdit, canDelete, canLock, canC
             <div key={f.name} className="flex gap-3 text-sm">
               <div className="w-56 shrink-0 text-stone-500">{f.label}</div>
               <div className="flex-1 text-stone-800">
-                {f.type === 'number' ? formatVND(record[f.name]) : f.type === 'date' ? formatDateVN(record[f.name]) : (record[f.name] || '—')}
+                {f.type === 'number' ? (
+                  <>
+                    {formatVND(record[f.name])}
+                    {record[f.name] ? <div className="text-xs italic text-stone-400">Bằng chữ: {soTienBangChu(record[f.name])}</div> : null}
+                  </>
+                ) : f.type === 'date' ? formatDateVN(record[f.name]) : (record[f.name] || '—')}
               </div>
             </div>
           ))}
@@ -2950,6 +3074,10 @@ function CustomPrintOutput({ schema, record, project, elements, orientation }) {
 
   function valueFor(fieldKey) {
     if (fieldKey === '__project__') return project ? project.ten : '—';
+    if (fieldKey.endsWith('__words')) {
+      const baseKey = fieldKey.slice(0, -'__words'.length);
+      return record[baseKey] ? soTienBangChu(record[baseKey]) : '';
+    }
     const f = schema.fields.find((x) => x.name === fieldKey);
     if (!f) return record[fieldKey] ?? '';
     if (f.type === 'number') return formatVND(record[fieldKey]);
@@ -3113,7 +3241,8 @@ function ProjectsView({
   const [selectedSteps, setSelectedSteps] = useState([]); // [docType] theo đúng thứ tự
   const [confirmDeleteProject, setConfirmDeleteProject] = useState(null);
   const [editingStepsFor, setEditingStepsFor] = useState(null); // projectId đang sửa cấu hình bước
-  const [managingPackagesFor, setManagingPackagesFor] = useState(null); // projectId đang quản lý danh sách gói thầu
+  const [selectedProjectId, setSelectedProjectId] = useState(projects[0]?.id || null);
+  const [showCreateForm, setShowCreateForm] = useState(false);
 
   async function handleCreateType(e) {
     e.preventDefault();
@@ -3168,187 +3297,216 @@ function ProjectsView({
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-8 py-8">
-      <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">Dự án</div>
-      <p className="mt-1 text-sm text-stone-500">
-        Khai báo loại dự án và tạo dự án tại đây. Việc chọn ai được làm gì trong từng dự án thực hiện ở mục "Người dùng".
-      </p>
-
-      <div className="mt-6 rounded-lg border border-stone-200 bg-white p-5">
-        <div className="flex items-center gap-2 text-sm font-medium text-stone-700">
-          <Tags className="h-4 w-4 text-teal-800" /> Loại dự án
+    <div className="mx-auto max-w-6xl px-8 py-8">
+      <div className="flex items-center justify-between">
+        <div>
+          <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">Dự án</div>
+          <p className="mt-1 text-sm text-stone-500">
+            Chọn 1 dự án bên trái để xem chi tiết và quản lý gói thầu. Việc chọn ai được làm gì thực hiện ở mục "Người dùng".
+          </p>
         </div>
-        <div className="mt-3 divide-y divide-stone-100">
-          {projectTypes.length === 0 && <div className="py-2 text-xs text-stone-400">Chưa có loại dự án nào.</div>}
-          {projectTypes.map((t) => (
-            <div key={t.id} className="flex items-center justify-between py-2">
-              <div className="text-sm text-stone-700">{t.ten} <span className="text-xs text-stone-400">({countUsing(t.id)} dự án)</span></div>
-              <button onClick={() => handleDeleteType(t.id)}
-                className={`rounded p-1 hover:bg-rose-50 ${confirmDeleteType === t.id ? 'text-rose-700' : 'text-stone-400 hover:text-rose-700'}`}>
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          ))}
-        </div>
-        <form onSubmit={handleCreateType} className="mt-3 flex gap-2 border-t border-stone-100 pt-3">
-          <input value={newTypeName} onChange={(e) => setNewTypeName(e.target.value)} placeholder="Tên loại dự án mới, ví dụ: Xây dựng"
-            className="flex-1 rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
-          <button type="submit" className="flex items-center gap-1 rounded-md bg-teal-900 px-3 py-1.5 text-sm text-white hover:bg-teal-800">
-            <Plus className="h-3.5 w-3.5" /> Thêm
-          </button>
-        </form>
+        <button onClick={() => setShowCreateForm((v) => !v)}
+          className="flex items-center gap-1.5 rounded-md bg-teal-900 px-3.5 py-2 text-sm text-white hover:bg-teal-800">
+          <Plus className="h-4 w-4" /> {showCreateForm ? 'Đóng' : 'Tạo dự án mới'}
+        </button>
       </div>
 
-      <div className="mt-6 rounded-lg border border-stone-200 bg-white p-5">
-        <div className="flex items-center gap-2 text-sm font-medium text-stone-700">
-          <FolderKanban className="h-4 w-4 text-teal-800" /> Tạo dự án mới
-        </div>
-        <form onSubmit={handleCreateProject} className="mt-3 space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <input value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} placeholder="Tên dự án *"
-              className="col-span-2 rounded-md border border-stone-300 px-3 py-1.5 text-sm sm:col-span-1" />
-            <div className="flex items-center rounded-md border border-dashed border-stone-300 bg-stone-50 px-3 py-1.5 text-sm text-stone-400">
-              Mã dự án: tự động cấp (DA001, DA002...)
-            </div>
-            <select value={newProjectType} onChange={(e) => setNewProjectType(e.target.value)}
-              className="col-span-2 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm sm:col-span-1">
-              <option value="">— Chọn loại dự án (tùy chọn) —</option>
-              {projectTypes.map((t) => <option key={t.id} value={t.id}>{t.ten}</option>)}
-            </select>
-            <input value={newProjectDesc} onChange={(e) => setNewProjectDesc(e.target.value)} placeholder="Mô tả ngắn"
-              className="col-span-2 rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
-          </div>
-
-          {projectSchema.fields.length > 0 && (
-            <div className="grid grid-cols-2 gap-3 border-t border-stone-100 pt-3">
-              <div className="col-span-2 text-xs font-medium uppercase tracking-wide text-stone-400">Thông tin chung của dự án</div>
-              {projectSchema.fields.map((f) => (
-                <div key={f.name} className={f.wide ? 'col-span-2' : 'col-span-1'}>
-                  <label className="mb-1 block text-xs font-medium text-stone-600">
-                    {f.label}{f.required && <span className="text-rose-600"> *</span>}
-                  </label>
-                  {f.type === 'table' ? (
-                    <TableFieldEditor columns={f.options} rows={newProjectData[f.name] || []} onChange={(rows) => setNewProjectData((prev) => ({ ...prev, [f.name]: rows }))} />
-                  ) : (
-                    <Field field={f} value={newProjectData[f.name] ?? ''} onChange={(v) => setNewProjectData((prev) => ({ ...prev, [f.name]: v }))} />
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="border-t border-stone-100 pt-3">
-            <div className="text-xs font-medium uppercase tracking-wide text-stone-400">Biểu mẫu cần thiết &amp; thứ tự thực hiện</div>
-            <p className="mt-1 text-xs text-stone-400">Chọn các loại hồ sơ cần cho dự án này. Sẽ khóa loại sau cho đến khi loại trước được đánh dấu hoàn thành.</p>
-            <div className="mt-2 space-y-1">
-              {TYPE_ORDER.map((docType) => (
-                <label key={docType} className="flex items-center gap-2 rounded-md border border-stone-200 px-2 py-1.5 text-sm">
-                  <input type="checkbox" checked={selectedSteps.includes(docType)} onChange={() => toggleStepSelection(docType)} />
-                  {DOC_TYPES[docType].label}
-                </label>
-              ))}
-            </div>
-            {selectedSteps.length > 0 && (
-              <div className="mt-2 rounded-md bg-stone-50 p-2">
-                <div className="text-xs text-stone-500">Thứ tự thực hiện:</div>
-                {selectedSteps.map((docType, idx) => (
-                  <div key={docType} className="mt-1 flex items-center justify-between rounded bg-white px-2 py-1 text-sm">
-                    <span>{idx + 1}. {DOC_TYPES[docType].label}</span>
-                    <div className="flex gap-1">
-                      <button type="button" disabled={idx === 0} onClick={() => moveStep(docType, 'up')} className="rounded p-1 text-stone-400 hover:bg-stone-100 disabled:opacity-30">▲</button>
-                      <button type="button" disabled={idx === selectedSteps.length - 1} onClick={() => moveStep(docType, 'down')} className="rounded p-1 text-stone-400 hover:bg-stone-100 disabled:opacity-30">▼</button>
-                    </div>
-                  </div>
-                ))}
+      <div className="mt-4 rounded-lg border border-stone-200 bg-white p-5">
+        <details>
+          <summary className="flex cursor-pointer items-center gap-2 text-sm font-medium text-stone-700">
+            <Tags className="h-4 w-4 text-teal-800" /> Loại dự án ({projectTypes.length})
+          </summary>
+          <div className="mt-3 divide-y divide-stone-100">
+            {projectTypes.length === 0 && <div className="py-2 text-xs text-stone-400">Chưa có loại dự án nào.</div>}
+            {projectTypes.map((t) => (
+              <div key={t.id} className="flex items-center justify-between py-2">
+                <div className="text-sm text-stone-700">{t.ten} <span className="text-xs text-stone-400">({countUsing(t.id)} dự án)</span></div>
+                <button onClick={() => handleDeleteType(t.id)}
+                  className={`rounded p-1 hover:bg-rose-50 ${confirmDeleteType === t.id ? 'text-rose-700' : 'text-stone-400 hover:text-rose-700'}`}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
               </div>
-            )}
+            ))}
           </div>
-
-          <button type="submit" className="flex w-full items-center justify-center gap-1.5 rounded-md bg-teal-900 py-2 text-sm text-white hover:bg-teal-800 sm:w-auto sm:px-6">
-            <Plus className="h-4 w-4" /> Tạo dự án
-          </button>
-        </form>
+          <form onSubmit={handleCreateType} className="mt-3 flex gap-2 border-t border-stone-100 pt-3">
+            <input value={newTypeName} onChange={(e) => setNewTypeName(e.target.value)} placeholder="Tên loại dự án mới, ví dụ: Xây dựng"
+              className="flex-1 rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
+            <button type="submit" className="flex items-center gap-1 rounded-md bg-teal-900 px-3 py-1.5 text-sm text-white hover:bg-teal-800">
+              <Plus className="h-3.5 w-3.5" /> Thêm
+            </button>
+          </form>
+        </details>
       </div>
 
-      <div className="mt-6 space-y-3">
-        {projects.length === 0 && (
-          <div className="rounded-lg border border-dashed border-stone-300 py-10 text-center text-sm text-stone-400">Chưa có dự án nào.</div>
-        )}
-        {projects.map((p) => (
-          <div key={p.id} className="rounded-lg border border-stone-200 bg-white p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm font-semibold text-teal-950">{p.ten} {p.maDuAn && <span className="font-normal text-stone-400">({p.maDuAn})</span>}</div>
-                <div className="mt-0.5 flex items-center gap-2 text-xs text-stone-500">
-                  {p.typeName && <span className="rounded bg-stone-100 px-1.5 py-0.5">{p.typeName}</span>}
-                  {p.moTa}
-                </div>
+      {showCreateForm && (
+        <div className="mt-4 rounded-lg border border-stone-200 bg-white p-5">
+          <div className="flex items-center gap-2 text-sm font-medium text-stone-700">
+            <FolderKanban className="h-4 w-4 text-teal-800" /> Tạo dự án mới
+          </div>
+          <form onSubmit={handleCreateProject} className="mt-3 space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <input value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} placeholder="Tên dự án *"
+                className="col-span-2 rounded-md border border-stone-300 px-3 py-1.5 text-sm sm:col-span-1" />
+              <div className="flex items-center rounded-md border border-dashed border-stone-300 bg-stone-50 px-3 py-1.5 text-sm text-stone-400">
+                Mã dự án: tự động cấp (DA001, DA002...)
               </div>
-              <button onClick={() => handleDeleteProject(p)}
-                className={`rounded p-1.5 hover:bg-rose-50 ${confirmDeleteProject === p.id ? 'text-rose-700' : 'text-stone-400 hover:text-rose-700'}`}>
-                <Trash2 className="h-4 w-4" />
-              </button>
+              <select value={newProjectType} onChange={(e) => setNewProjectType(e.target.value)}
+                className="col-span-2 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm sm:col-span-1">
+                <option value="">— Chọn loại dự án (tùy chọn) —</option>
+                {projectTypes.map((t) => <option key={t.id} value={t.id}>{t.ten}</option>)}
+              </select>
+              <input value={newProjectDesc} onChange={(e) => setNewProjectDesc(e.target.value)} placeholder="Mô tả ngắn"
+                className="col-span-2 rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
             </div>
 
-            {projectSchema.fields.length > 0 && Object.keys(p.data || {}).some((k) => p.data[k]) && (
-              <div className="mt-2 space-y-0.5 border-t border-stone-100 pt-2 text-xs text-stone-500">
-                {projectSchema.fields.filter((f) => f.type !== 'table' && p.data?.[f.name]).map((f) => (
-                  <div key={f.name}>{f.label}: <span className="text-stone-700">{p.data[f.name]}</span></div>
-                ))}
-              </div>
-            )}
-
-            <div className="mt-2 border-t border-stone-100 pt-2">
-              {editingStepsFor === p.id ? (
-                <ProjectStepsEditor
-                  initialSteps={(projectSteps[p.id] || []).map((s) => s.docType)}
-                  onCancel={() => setEditingStepsFor(null)}
-                  onSave={async (steps) => { await onSaveProjectSteps(p.id, steps.map((docType) => ({ docType }))); setEditingStepsFor(null); }}
-                />
-              ) : (
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                    {(projectSteps[p.id] || []).length === 0 ? (
-                      <span className="text-stone-400">Chưa cấu hình bước nào (không khóa thứ tự).</span>
+            {projectSchema.fields.length > 0 && (
+              <div className="grid grid-cols-2 gap-3 border-t border-stone-100 pt-3">
+                <div className="col-span-2 text-xs font-medium uppercase tracking-wide text-stone-400">Thông tin chung của dự án</div>
+                {projectSchema.fields.map((f) => (
+                  <div key={f.name} className={f.wide ? 'col-span-2' : 'col-span-1'}>
+                    <label className="mb-1 block text-xs font-medium text-stone-600">
+                      {f.label}{f.required && <span className="text-rose-600"> *</span>}
+                    </label>
+                    {f.type === 'table' ? (
+                      <TableFieldEditor columns={f.options} rows={newProjectData[f.name] || []} onChange={(rows) => setNewProjectData((prev) => ({ ...prev, [f.name]: rows }))} />
                     ) : (
-                      (projectSteps[p.id] || []).map((s, idx) => (
-                        <span key={s.docType} className={`flex items-center gap-1 rounded px-2 py-0.5 ${s.completed ? 'bg-teal-50 text-teal-700' : 'bg-stone-100 text-stone-500'}`}>
-                          {idx + 1}. {DOC_TYPES[s.docType].short}
-                          {s.completed ? <CheckCircle2 className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
-                        </span>
-                      ))
+                      <Field field={f} value={newProjectData[f.name] ?? ''} onChange={(v) => setNewProjectData((prev) => ({ ...prev, [f.name]: v }))} />
                     )}
                   </div>
-                  <button onClick={() => setEditingStepsFor(p.id)} className="flex items-center gap-1 text-xs text-teal-800 hover:underline">
-                    <Settings2 className="h-3 w-3" /> Sửa các bước
-                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="border-t border-stone-100 pt-3">
+              <div className="text-xs font-medium uppercase tracking-wide text-stone-400">Biểu mẫu cần thiết &amp; thứ tự thực hiện</div>
+              <p className="mt-1 text-xs text-stone-400">Chọn các loại hồ sơ cần cho dự án này. Sẽ khóa loại sau cho đến khi loại trước được đánh dấu hoàn thành.</p>
+              <div className="mt-2 space-y-1">
+                {TYPE_ORDER.map((docType) => (
+                  <label key={docType} className="flex items-center gap-2 rounded-md border border-stone-200 px-2 py-1.5 text-sm">
+                    <input type="checkbox" checked={selectedSteps.includes(docType)} onChange={() => toggleStepSelection(docType)} />
+                    {DOC_TYPES[docType].label}
+                  </label>
+                ))}
+              </div>
+              {selectedSteps.length > 0 && (
+                <div className="mt-2 rounded-md bg-stone-50 p-2">
+                  <div className="text-xs text-stone-500">Thứ tự thực hiện:</div>
+                  {selectedSteps.map((docType, idx) => (
+                    <div key={docType} className="mt-1 flex items-center justify-between rounded bg-white px-2 py-1 text-sm">
+                      <span>{idx + 1}. {DOC_TYPES[docType].label}</span>
+                      <div className="flex gap-1">
+                        <button type="button" disabled={idx === 0} onClick={() => moveStep(docType, 'up')} className="rounded p-1 text-stone-400 hover:bg-stone-100 disabled:opacity-30">▲</button>
+                        <button type="button" disabled={idx === selectedSteps.length - 1} onClick={() => moveStep(docType, 'down')} className="rounded p-1 text-stone-400 hover:bg-stone-100 disabled:opacity-30">▼</button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
 
-            <div className="mt-2 border-t border-stone-100 pt-2">
-              {managingPackagesFor === p.id ? (
-                <GoiThauManager
-                  project={p}
-                  goiThauSchema={goiThauSchema}
-                  packages={goiThauList[p.id] || []}
-                  onCreate={(ten, data) => onCreateGoiThau(p.id, ten, data)}
-                  onDelete={(id) => onDeleteGoiThau(id, p.id)}
-                  onClose={() => setManagingPackagesFor(null)}
-                />
-              ) : (
-                <div className="flex items-center justify-between">
-                  <div className="text-xs text-stone-500">
-                    {(goiThauList[p.id] || []).length === 0 ? 'Chưa có gói thầu nào.' : `${(goiThauList[p.id] || []).length} gói thầu: ${(goiThauList[p.id] || []).map((g) => g.maGoiThau).join(', ')}`}
-                  </div>
-                  <button onClick={() => setManagingPackagesFor(p.id)} className="flex items-center gap-1 text-xs text-teal-800 hover:underline">
-                    <ClipboardList className="h-3 w-3" /> Quản lý gói thầu
-                  </button>
+            <button type="submit" className="flex w-full items-center justify-center gap-1.5 rounded-md bg-teal-900 py-2 text-sm text-white hover:bg-teal-800 sm:w-auto sm:px-6">
+              <Plus className="h-4 w-4" /> Tạo dự án
+            </button>
+          </form>
+        </div>
+      )}
+
+      <div className="mt-4 flex gap-4">
+        <div className="w-64 shrink-0 rounded-lg border border-stone-200 bg-white">
+          {projects.length === 0 && (
+            <div className="p-4 text-center text-xs text-stone-400">Chưa có dự án nào.</div>
+          )}
+          <div className="max-h-[32rem] divide-y divide-stone-100 overflow-y-auto">
+            {projects.map((p) => (
+              <button key={p.id} onClick={() => setSelectedProjectId(p.id)}
+                className={`block w-full px-3 py-2.5 text-left text-sm ${selectedProjectId === p.id ? 'bg-teal-50 text-teal-900' : 'text-stone-700 hover:bg-stone-50'}`}>
+                <div className="font-medium">{p.ten}</div>
+                <div className="mt-0.5 flex items-center gap-1.5 text-xs text-stone-400">
+                  {p.maDuAn}
+                  {p.typeName && <span className="rounded bg-stone-100 px-1 py-0.5">{p.typeName}</span>}
                 </div>
-              )}
-            </div>
+              </button>
+            ))}
           </div>
-        ))}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          {(() => {
+            const p = projects.find((x) => x.id === selectedProjectId);
+            if (!p) {
+              return <div className="rounded-lg border border-dashed border-stone-300 py-16 text-center text-sm text-stone-400">Chọn 1 dự án bên trái để xem chi tiết.</div>;
+            }
+            return (
+              <div className="space-y-4">
+                <div className="rounded-lg border border-stone-200 bg-white p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-base font-semibold text-teal-950">{p.ten} <span className="font-normal text-stone-400">({p.maDuAn})</span></div>
+                      <div className="mt-0.5 flex items-center gap-2 text-xs text-stone-500">
+                        {p.typeName && <span className="rounded bg-stone-100 px-1.5 py-0.5">{p.typeName}</span>}
+                        {p.moTa}
+                      </div>
+                    </div>
+                    <button onClick={() => handleDeleteProject(p)}
+                      className={`rounded p-1.5 hover:bg-rose-50 ${confirmDeleteProject === p.id ? 'text-rose-700' : 'text-stone-400 hover:text-rose-700'}`}>
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  {projectSchema.fields.length > 0 && Object.keys(p.data || {}).some((k) => p.data[k]) && (
+                    <div className="mt-2 space-y-0.5 border-t border-stone-100 pt-2 text-xs text-stone-500">
+                      {projectSchema.fields.filter((f) => f.type !== 'table' && p.data?.[f.name]).map((f) => (
+                        <div key={f.name}>{f.label}: <span className="text-stone-700">{p.data[f.name]}</span></div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="mt-3 border-t border-stone-100 pt-3">
+                    {editingStepsFor === p.id ? (
+                      <ProjectStepsEditor
+                        initialSteps={(projectSteps[p.id] || []).map((s) => s.docType)}
+                        onCancel={() => setEditingStepsFor(null)}
+                        onSave={async (steps) => { await onSaveProjectSteps(p.id, steps.map((docType) => ({ docType }))); setEditingStepsFor(null); }}
+                      />
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                          {(projectSteps[p.id] || []).length === 0 ? (
+                            <span className="text-stone-400">Chưa cấu hình bước nào (không khóa thứ tự).</span>
+                          ) : (
+                            (projectSteps[p.id] || []).map((s, idx) => (
+                              <span key={s.docType} className={`flex items-center gap-1 rounded px-2 py-0.5 ${s.completed ? 'bg-teal-50 text-teal-700' : 'bg-stone-100 text-stone-500'}`}>
+                                {idx + 1}. {DOC_TYPES[s.docType].short}
+                                {s.completed ? <CheckCircle2 className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
+                              </span>
+                            ))
+                          )}
+                        </div>
+                        <button onClick={() => setEditingStepsFor(p.id)} className="flex items-center gap-1 text-xs text-teal-800 hover:underline">
+                          <Settings2 className="h-3 w-3" /> Sửa các bước
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-stone-200 bg-white p-4">
+                  <div className="mb-2 flex items-center gap-2 text-sm font-medium text-stone-700">
+                    <ClipboardList className="h-4 w-4 text-teal-800" /> Danh sách gói thầu
+                  </div>
+                  <GoiThauManager
+                    project={p}
+                    goiThauSchema={goiThauSchema}
+                    packages={goiThauList[p.id] || []}
+                    onCreate={(ten, data) => onCreateGoiThau(p.id, ten, data)}
+                    onDelete={(id) => onDeleteGoiThau(id, p.id)}
+                    embedded
+                  />
+                </div>
+              </div>
+            );
+          })()}
+        </div>
       </div>
     </div>
   );
@@ -3356,7 +3514,7 @@ function ProjectsView({
 
 /* ---------------- Quản lý danh sách "Gói thầu" của 1 dự án (mã tự động sinh) ---------------- */
 
-function GoiThauManager({ project, goiThauSchema, packages, onCreate, onDelete, onClose }) {
+function GoiThauManager({ project, goiThauSchema, packages, onCreate, onDelete, onClose, embedded }) {
   const [tenGoiThau, setTenGoiThau] = useState('');
   const [extraData, setExtraData] = useState({});
   const [creating, setCreating] = useState(false);
@@ -3381,19 +3539,30 @@ function GoiThauManager({ project, goiThauSchema, packages, onCreate, onDelete, 
   }
 
   return (
-    <div className="rounded-md bg-stone-50 p-3">
+    <div className={embedded ? '' : 'rounded-md bg-stone-50 p-3'}>
+      {!embedded && (
       <div className="flex items-center justify-between">
         <div className="text-sm font-medium text-stone-700">Danh sách gói thầu — {project.ten}</div>
         <button onClick={onClose} className="text-xs text-stone-500 hover:underline">Đóng</button>
       </div>
+      )}
 
       <div className="mt-2 divide-y divide-stone-200 rounded-md border border-stone-200 bg-white">
         {packages.length === 0 && <div className="px-3 py-2 text-xs text-stone-400">Chưa có gói thầu nào.</div>}
         {packages.map((g) => (
           <div key={g.id} className="flex items-center justify-between px-3 py-2 text-sm">
             <div>
-              <span className="font-mono text-xs text-teal-800">{g.maGoiThau}</span>
-              <span className="ml-2 text-stone-700">{g.tenGoiThau}</span>
+              <div>
+                <span className="font-mono text-xs text-teal-800">{g.maGoiThau}</span>
+                <span className="ml-2 text-stone-700">{g.tenGoiThau}</span>
+              </div>
+              {(g.data?.giaGoiThau || g.data?.thoiGianThucHien) && (
+                <div className="mt-0.5 text-xs text-stone-400">
+                  {g.data?.giaGoiThau && <span>Giá: {formatVND(g.data.giaGoiThau)} ({soTienBangChu(g.data.giaGoiThau)})</span>}
+                  {g.data?.giaGoiThau && g.data?.thoiGianThucHien && <span> · </span>}
+                  {g.data?.thoiGianThucHien && <span>Thời gian: {g.data.thoiGianThucHien}</span>}
+                </div>
+              )}
             </div>
             <button onClick={() => handleDelete(g.id)}
               className={`rounded p-1 hover:bg-rose-50 ${confirmDelete === g.id ? 'text-rose-700' : 'text-stone-400 hover:text-rose-700'}`}>
@@ -3480,29 +3649,27 @@ function ProjectStepsEditor({ initialSteps, onCancel, onSave }) {
 
 /* ---------------- Sửa thông tin người dùng + đặt lại mật khẩu ---------------- */
 
-function UserEditForm({ user, onCancel, onSaveProfile, onResetPassword, onUpdateEmail }) {
+function UserEditForm({ user, onCancel, onSaveProfile, onResetPassword, onUpdateEmail, onRemoveUser, isSelf }) {
   const [name, setName] = useState(user.full_name || '');
-  const [newEmail, setNewEmail] = useState('');
+  const [email, setEmail] = useState(user.email || '');
   const [newPassword, setNewPassword] = useState('');
-  const [savingName, setSavingName] = useState(false);
-  const [savingEmail, setSavingEmail] = useState(false);
-  const [emailDone, setEmailDone] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveDone, setSaveDone] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [resetDone, setResetDone] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
-  async function handleSaveName() {
+  const nameChanged = name.trim() !== (user.full_name || '');
+  const emailChanged = email.trim() !== (user.email || '') && email.trim() !== '';
+
+  async function handleSave() {
     if (!name.trim()) return;
-    setSavingName(true);
-    await onSaveProfile(name.trim());
-    setSavingName(false);
-  }
-
-  async function handleSaveEmail() {
-    if (!newEmail.trim()) return;
-    setSavingEmail(true);
-    const ok = await onUpdateEmail(newEmail.trim());
-    setSavingEmail(false);
-    if (ok) { setEmailDone(true); setNewEmail(''); }
+    setSaving(true);
+    if (nameChanged) await onSaveProfile(name.trim());
+    if (emailChanged) await onUpdateEmail(email.trim());
+    setSaving(false);
+    setSaveDone(true);
+    setTimeout(() => setSaveDone(false), 2500);
   }
 
   async function handleReset() {
@@ -3513,33 +3680,37 @@ function UserEditForm({ user, onCancel, onSaveProfile, onResetPassword, onUpdate
     if (ok) { setResetDone(true); setNewPassword(''); }
   }
 
+  function handleDelete() {
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      setTimeout(() => setConfirmDelete(false), 3000);
+      return;
+    }
+    onRemoveUser();
+  }
+
   return (
     <div className="space-y-3 rounded-md bg-stone-50 p-3">
-      <div>
-        <label className="mb-1 block text-xs text-stone-500">Họ tên</label>
-        <div className="flex gap-2">
-          <input value={name} onChange={(e) => setName(e.target.value)} className="flex-1 rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
-          <button onClick={handleSaveName} disabled={savingName}
-            className="rounded-md bg-teal-900 px-3 py-1.5 text-xs text-white hover:bg-teal-800 disabled:opacity-60">
-            {savingName ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Lưu tên'}
-          </button>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="mb-1 block text-xs text-stone-500">Họ tên</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} className="w-full rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs text-stone-500">Email đăng nhập</label>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
         </div>
       </div>
-
-      <div>
-        <label className="mb-1 block text-xs text-stone-500">Đổi email đăng nhập (để trống nếu không đổi)</label>
-        <div className="flex gap-2">
-          <input type="email" value={newEmail} onChange={(e) => { setNewEmail(e.target.value); setEmailDone(false); }}
-            placeholder="Email mới" className="flex-1 rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
-          <button onClick={handleSaveEmail} disabled={savingEmail || !newEmail.trim()}
-            className="rounded-md bg-teal-900 px-3 py-1.5 text-xs text-white hover:bg-teal-800 disabled:opacity-60">
-            {savingEmail ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Đổi email'}
-          </button>
-        </div>
-        {emailDone && <p className="mt-1 flex items-center gap-1 text-xs text-teal-700"><CheckCircle2 className="h-3.5 w-3.5" /> Đã đổi email đăng nhập.</p>}
+      <div className="flex items-center gap-2">
+        <button onClick={handleSave} disabled={saving || !name.trim()}
+          className="flex items-center gap-1.5 rounded-md bg-teal-900 px-3 py-1.5 text-xs text-white hover:bg-teal-800 disabled:opacity-60">
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+          Lưu thay đổi
+        </button>
+        {saveDone && <span className="flex items-center gap-1 text-xs text-teal-700"><CheckCircle2 className="h-3.5 w-3.5" /> Đã lưu.</span>}
       </div>
 
-      <div>
+      <div className="border-t border-stone-200 pt-3">
         <label className="mb-1 block text-xs text-stone-500">Đặt lại mật khẩu (để trống nếu không đổi)</label>
         <div className="flex gap-2">
           <input type="password" value={newPassword} onChange={(e) => { setNewPassword(e.target.value); setResetDone(false); }}
@@ -3552,7 +3723,13 @@ function UserEditForm({ user, onCancel, onSaveProfile, onResetPassword, onUpdate
         {resetDone && <p className="mt-1 flex items-center gap-1 text-xs text-teal-700"><CheckCircle2 className="h-3.5 w-3.5" /> Đã đặt lại — báo mật khẩu mới cho người dùng.</p>}
       </div>
 
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between border-t border-stone-200 pt-3">
+        {!isSelf ? (
+          <button onClick={handleDelete}
+            className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs ${confirmDelete ? 'border-rose-400 bg-rose-50 text-rose-700' : 'border-stone-300 text-stone-600 hover:bg-white'}`}>
+            <Trash2 className="h-3.5 w-3.5" /> {confirmDelete ? 'Bấm lần nữa để xác nhận xóa' : 'Xóa người dùng'}
+          </button>
+        ) : <span />}
         <button onClick={onCancel} className="rounded-md border border-stone-300 px-3 py-1 text-xs text-stone-600 hover:bg-white">Đóng</button>
       </div>
     </div>
@@ -3699,10 +3876,12 @@ function UsersView({
               {editingUserId === u.id ? (
                 <UserEditForm
                   user={u}
+                  isSelf={u.id === myId}
                   onCancel={() => setEditingUserId(null)}
                   onSaveProfile={async (name) => { await onUpdateProfile(u.id, name); }}
                   onUpdateEmail={(email) => onUpdateEmail(u.id, email)}
                   onResetPassword={(pwd) => onResetPassword(u.id, pwd)}
+                  onRemoveUser={async () => { await onRemoveUser(u.id); setEditingUserId(null); }}
                 />
               ) : (
                 <div className="flex items-center justify-between">
@@ -4389,7 +4568,11 @@ function PrintDesigner({ docType, schema, savedLayout, onSave }) {
 
   const availableFields = [
     { fieldKey: '__project__', label: 'Dự án' },
-    ...schema.fields.filter((f) => f.type !== 'items' && f.type !== 'table').map((f) => ({ fieldKey: f.name, label: f.label })),
+    ...schema.fields.filter((f) => f.type !== 'items' && f.type !== 'table').flatMap((f) =>
+      f.type === 'number'
+        ? [{ fieldKey: f.name, label: f.label }, { fieldKey: f.name + '__words', label: f.label + ' (bằng chữ)' }]
+        : [{ fieldKey: f.name, label: f.label }]
+    ),
   ];
   const tableFields = schema.fields
     .filter((f) => f.type === 'items' || f.type === 'table')
@@ -4602,8 +4785,10 @@ function PrintDesigner({ docType, schema, savedLayout, onSave }) {
 /* Modal: giao việc điền thông tin cho người khác                      */
 /* ------------------------------------------------------------------ */
 
-function AssignFieldsModal({ schema, profiles, onClose, onAssign }) {
+function AssignFieldsModal({ schema, profiles, units, onClose, onAssign }) {
+  const [targetType, setTargetType] = useState('user'); // 'user' | 'unit'
   const [userId, setUserId] = useState('');
+  const [unitId, setUnitId] = useState('');
   const [selectedFields, setSelectedFields] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const assignableFields = schema.fields.filter((f) => f.name !== 'maGoiThau' && f.name !== 'tenGoiThau');
@@ -4612,10 +4797,13 @@ function AssignFieldsModal({ schema, profiles, onClose, onAssign }) {
     setSelectedFields((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]));
   }
 
+  const targetOk = targetType === 'user' ? !!userId : !!unitId;
+
   async function handleSubmit() {
-    if (!userId || selectedFields.length === 0) return;
+    if (!targetOk || selectedFields.length === 0) return;
     setSubmitting(true);
-    await onAssign(userId, selectedFields);
+    const target = targetType === 'user' ? { type: 'user', userId } : { type: 'unit', unitId };
+    await onAssign(target, selectedFields);
     setSubmitting(false);
   }
 
@@ -4626,15 +4814,37 @@ function AssignFieldsModal({ schema, profiles, onClose, onAssign }) {
           <div className="text-lg font-semibold text-stone-900">Giao việc điền thông tin</div>
           <button onClick={onClose} className="text-stone-400 hover:text-stone-600"><X className="h-5 w-5" /></button>
         </div>
-        <p className="mt-2 text-sm text-stone-500">Chọn người thực hiện và những trường cần họ điền. Hệ thống sẽ gửi email kèm link cho họ.</p>
+        <p className="mt-2 text-sm text-stone-500">Chọn người (hoặc đơn vị) thực hiện và những trường cần điền. Hệ thống sẽ gửi email kèm link.</p>
 
-        <div className="mt-4">
-          <label className="mb-1 block text-xs font-medium text-stone-600">Giao cho</label>
-          <select value={userId} onChange={(e) => setUserId(e.target.value)} className="w-full rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm">
-            <option value="">— Chọn người dùng —</option>
-            {profiles.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
-          </select>
+        <div className="mt-4 flex gap-1 rounded-md bg-stone-100 p-1">
+          <button onClick={() => setTargetType('user')}
+            className={`flex-1 rounded-md py-1.5 text-xs ${targetType === 'user' ? 'bg-white shadow-sm text-teal-900' : 'text-stone-500'}`}>
+            Cá nhân
+          </button>
+          <button onClick={() => setTargetType('unit')}
+            className={`flex-1 rounded-md py-1.5 text-xs ${targetType === 'unit' ? 'bg-white shadow-sm text-teal-900' : 'text-stone-500'}`}>
+            Đơn vị
+          </button>
         </div>
+
+        {targetType === 'user' ? (
+          <div className="mt-3">
+            <label className="mb-1 block text-xs font-medium text-stone-600">Giao cho</label>
+            <select value={userId} onChange={(e) => setUserId(e.target.value)} className="w-full rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm">
+              <option value="">— Chọn người dùng —</option>
+              {profiles.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+            </select>
+          </div>
+        ) : (
+          <div className="mt-3">
+            <label className="mb-1 block text-xs font-medium text-stone-600">Giao cho đơn vị</label>
+            <select value={unitId} onChange={(e) => setUnitId(e.target.value)} className="w-full rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm">
+              <option value="">— Chọn đơn vị —</option>
+              {units.map((u) => <option key={u.id} value={u.id}>{u.ten}</option>)}
+            </select>
+            <p className="mt-1 text-xs text-stone-400">Bất kỳ ai trong đơn vị có thể nhận và điền. Sau khi điền xong, lãnh đạo đơn vị sẽ xác nhận rồi mới báo lại cho bạn.</p>
+          </div>
+        )}
 
         <div className="mt-4">
           <label className="mb-1 block text-xs font-medium text-stone-600">Trường cần điền</label>
@@ -4657,7 +4867,7 @@ function AssignFieldsModal({ schema, profiles, onClose, onAssign }) {
           <button onClick={onClose} className="rounded-md border border-stone-300 px-4 py-2 text-sm text-stone-600 hover:bg-stone-50">Hủy</button>
           <button
             onClick={handleSubmit}
-            disabled={submitting || !userId || selectedFields.length === 0}
+            disabled={submitting || !targetOk || selectedFields.length === 0}
             className="flex items-center gap-1.5 rounded-md bg-teal-900 px-4 py-2 text-sm text-white hover:bg-teal-800 disabled:opacity-60"
           >
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
@@ -4673,8 +4883,12 @@ function AssignFieldsModal({ schema, profiles, onClose, onAssign }) {
 /* Danh sách nhiệm vụ của tôi                                           */
 /* ------------------------------------------------------------------ */
 
-function MyAssignmentsView({ assignments, records, nameOf, onOpen }) {
-  const pending = assignments.filter((a) => a.status === 'pending');
+function MyAssignmentsView({ assignments, records, nameOf, unitsById, myId, myUnitId, myLeaderUnitIds, onOpen }) {
+  const needsFill = assignments.filter((a) =>
+    a.status === 'pending' && (a.assignedTo === myId || (a.unitId && a.unitId === myUnitId))
+  );
+  const needsMyReview = assignments.filter((a) => a.status === 'submitted' && a.unitId && myLeaderUnitIds.has(a.unitId));
+  const waitingOnLeader = assignments.filter((a) => a.status === 'submitted' && a.assignedTo === myId && !(a.unitId && myLeaderUnitIds.has(a.unitId)));
   const completed = assignments.filter((a) => a.status === 'completed');
 
   function titleOf(a) {
@@ -4685,23 +4899,60 @@ function MyAssignmentsView({ assignments, records, nameOf, onOpen }) {
   return (
     <div className="mx-auto max-w-3xl px-8 py-8">
       <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">Nhiệm vụ của tôi</div>
-      <p className="mt-1 text-sm text-stone-500">Những phần thông tin bạn được giao điền vào hồ sơ.</p>
+      <p className="mt-1 text-sm text-stone-500">Những phần thông tin bạn (hoặc đơn vị bạn) được giao điền, và những việc cần bạn duyệt với vai trò lãnh đạo đơn vị.</p>
 
       <div className="mt-5">
         <div className="text-xs font-medium uppercase tracking-wide text-stone-400">Đang chờ điền</div>
         <div className="mt-2 divide-y divide-stone-200 rounded-lg border border-stone-200 bg-white">
-          {pending.length === 0 && <div className="px-4 py-6 text-center text-sm text-stone-400">Không có nhiệm vụ nào đang chờ.</div>}
-          {pending.map((a) => (
+          {needsFill.length === 0 && <div className="px-4 py-6 text-center text-sm text-stone-400">Không có nhiệm vụ nào đang chờ.</div>}
+          {needsFill.map((a) => (
             <button key={a.id} onClick={() => onOpen(a)} className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-stone-50">
               <div>
                 <div className="text-sm font-medium text-stone-800">{titleOf(a)}</div>
-                <div className="text-xs text-stone-400">{DOC_TYPES[a.docType].label} · {a.fieldKeys.length} trường cần điền</div>
+                <div className="text-xs text-stone-400">
+                  {DOC_TYPES[a.docType].label} · {a.fieldKeys.length} trường cần điền
+                  {a.unitId && <span className="ml-1">· Đơn vị: {unitsById[a.unitId]?.ten || ''}</span>}
+                </div>
               </div>
               <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">Chờ điền</span>
             </button>
           ))}
         </div>
       </div>
+
+      {needsMyReview.length > 0 && (
+        <div className="mt-6">
+          <div className="text-xs font-medium uppercase tracking-wide text-stone-400">Cần bạn duyệt (lãnh đạo đơn vị)</div>
+          <div className="mt-2 divide-y divide-stone-200 rounded-lg border border-stone-200 bg-white">
+            {needsMyReview.map((a) => (
+              <button key={a.id} onClick={() => onOpen(a)} className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-stone-50">
+                <div>
+                  <div className="text-sm font-medium text-stone-800">{titleOf(a)}</div>
+                  <div className="text-xs text-stone-400">{DOC_TYPES[a.docType].label} · {nameOf(a.assignedTo)} đã nộp · Đơn vị: {unitsById[a.unitId]?.ten || ''}</div>
+                </div>
+                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-800">Chờ duyệt</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {waitingOnLeader.length > 0 && (
+        <div className="mt-6">
+          <div className="text-xs font-medium uppercase tracking-wide text-stone-400">Đã nộp, chờ lãnh đạo duyệt</div>
+          <div className="mt-2 divide-y divide-stone-200 rounded-lg border border-stone-200 bg-white">
+            {waitingOnLeader.map((a) => (
+              <div key={a.id} className="flex items-center justify-between px-4 py-3">
+                <div>
+                  <div className="text-sm text-stone-600">{titleOf(a)}</div>
+                  <div className="text-xs text-stone-400">{DOC_TYPES[a.docType].label}</div>
+                </div>
+                <span className="text-xs text-stone-400">Đang chờ duyệt</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {completed.length > 0 && (
         <div className="mt-6">
@@ -4727,7 +4978,7 @@ function MyAssignmentsView({ assignments, records, nameOf, onOpen }) {
 /* Màn hình điền thông tin được giao + xem trước + xác nhận             */
 /* ------------------------------------------------------------------ */
 
-function AssignmentFillView({ schema, record, project, assignment, onSaveDraft, onComplete, onBack }) {
+function AssignmentFillView({ schema, record, project, assignment, isLeaderReview, onSaveDraft, onComplete, onSubmitForReview, onApprove, onBack }) {
   const [values, setValues] = useState(() => {
     const init = {};
     assignment.fieldKeys.forEach((k) => {
@@ -4740,7 +4991,11 @@ function AssignmentFillView({ schema, record, project, assignment, onSaveDraft, 
   const [showPreview, setShowPreview] = useState(false);
   const [saving, setSaving] = useState(false);
   const [completing, setCompleting] = useState(false);
-  const isDone = assignment.status === 'completed';
+
+  const isCompleted = assignment.status === 'completed';
+  const isWaitingOnLeader = !isLeaderReview && assignment.status === 'submitted' && !isCompleted;
+  const isReadOnly = isCompleted || isWaitingOnLeader || isLeaderReview;
+  const isUnitFlow = !!assignment.unitId;
 
   const fields = schema.fields.filter((f) => assignment.fieldKeys.includes(f.name));
 
@@ -4754,10 +5009,17 @@ function AssignmentFillView({ schema, record, project, assignment, onSaveDraft, 
     setSaving(false);
   }
 
-  async function handleConfirm() {
+  async function handleFinalAction() {
     setCompleting(true);
-    const ok = await onSaveDraft(values);
-    if (ok !== false) await onComplete();
+    if (isLeaderReview) {
+      await onApprove();
+    } else {
+      const ok = await onSaveDraft(values);
+      if (ok !== false) {
+        if (isUnitFlow) await onSubmitForReview();
+        else await onComplete();
+      }
+    }
     setCompleting(false);
   }
 
@@ -4770,13 +5032,23 @@ function AssignmentFillView({ schema, record, project, assignment, onSaveDraft, 
       </button>
 
       <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">
-        Điền thông tin được giao — {schema.label}
+        {isLeaderReview ? 'Duyệt phần đã điền — ' : 'Điền thông tin được giao — '}{schema.label}
       </div>
       {project && <p className="mt-1 text-sm text-stone-500">Dự án: {project.ten}</p>}
 
-      {isDone && (
+      {isCompleted && (
         <div className="mt-3 flex items-center gap-2 rounded-md bg-teal-50 px-3 py-2 text-sm text-teal-800">
-          <CheckCircle2 className="h-4 w-4" /> Bạn đã xác nhận hoàn thành phần này.
+          <CheckCircle2 className="h-4 w-4" /> Đã hoàn thành và gửi lại cho người giao việc.
+        </div>
+      )}
+      {isWaitingOnLeader && (
+        <div className="mt-3 flex items-center gap-2 rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-800">
+          Bạn đã nộp phần này — đang chờ lãnh đạo đơn vị xác nhận.
+        </div>
+      )}
+      {isLeaderReview && (
+        <div className="mt-3 flex items-center gap-2 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Nhân viên đã điền xong phần này — kiểm tra rồi bấm "Duyệt" để xác nhận hoàn thành và báo lại cho người giao việc.
         </div>
       )}
 
@@ -4793,14 +5065,14 @@ function AssignmentFillView({ schema, record, project, assignment, onSaveDraft, 
                 ) : f.type === 'table' ? (
                   <TableFieldEditor columns={f.options} rows={values[f.name]} onChange={(rows) => updateValue(f.name, rows)} />
                 ) : (
-                  <Field field={f} value={values[f.name] ?? ''} onChange={(v) => updateValue(f.name, v)} disabled={isDone} />
+                  <Field field={f} value={values[f.name] ?? ''} onChange={(v) => updateValue(f.name, v)} disabled={isReadOnly} />
                 )}
               </div>
             ))}
           </div>
 
           <div className="mt-6 flex items-center justify-end gap-2 border-t border-stone-200 pt-5">
-            {!isDone && (
+            {!isReadOnly && (
               <button onClick={handleSaveDraft} disabled={saving}
                 className="flex items-center gap-1.5 rounded-md border border-stone-300 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-60">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -4828,15 +5100,34 @@ function AssignmentFillView({ schema, record, project, assignment, onSaveDraft, 
             onToggleLock={() => {}}
             confirmingDelete={false}
           />
-          {!isDone && (
+          {!isReadOnly && (
             <div className="mx-auto mt-4 flex max-w-3xl justify-end gap-2 px-8 print:hidden">
               <button onClick={() => setShowPreview(false)} className="rounded-md border border-stone-300 px-4 py-2 text-sm text-stone-600 hover:bg-stone-50">
                 Quay lại chỉnh sửa
               </button>
-              <button onClick={handleConfirm} disabled={completing}
+              <button onClick={handleFinalAction} disabled={completing}
                 className="flex items-center gap-1.5 rounded-md bg-teal-900 px-4 py-2 text-sm text-white hover:bg-teal-800 disabled:opacity-60">
                 {completing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                Xác nhận hoàn thành &amp; gửi lại
+                {isUnitFlow ? 'Nộp cho lãnh đạo duyệt' : 'Xác nhận hoàn thành & gửi lại'}
+              </button>
+            </div>
+          )}
+          {isLeaderReview && (
+            <div className="mx-auto mt-4 flex max-w-3xl justify-end gap-2 px-8 print:hidden">
+              <button onClick={() => setShowPreview(false)} className="rounded-md border border-stone-300 px-4 py-2 text-sm text-stone-600 hover:bg-stone-50">
+                Đóng xem trước
+              </button>
+              <button onClick={handleFinalAction} disabled={completing}
+                className="flex items-center gap-1.5 rounded-md bg-teal-900 px-4 py-2 text-sm text-white hover:bg-teal-800 disabled:opacity-60">
+                {completing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                Duyệt &amp; xác nhận hoàn thành
+              </button>
+            </div>
+          )}
+          {isReadOnly && !isLeaderReview && (
+            <div className="mx-auto mt-4 flex max-w-3xl justify-end px-8 print:hidden">
+              <button onClick={() => setShowPreview(false)} className="rounded-md border border-stone-300 px-4 py-2 text-sm text-stone-600 hover:bg-stone-50">
+                Đóng xem trước
               </button>
             </div>
           )}
@@ -5101,6 +5392,74 @@ function UnitsView({ units, profiles, onCreateUnit, onDeleteUnit, onSetLeader, o
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Trang "Giao diện" — tùy chỉnh nền cho màn hình dữ liệu               */
+/* ------------------------------------------------------------------ */
+
+function AppearanceView({ background, onSave }) {
+  const [mode, setMode] = useState(background?.type || 'none'); // none | color | image
+  const [color, setColor] = useState(background?.type === 'color' ? background.value : '#f5f5f4');
+  const [imageUrl, setImageUrl] = useState(background?.type === 'image' ? background.value : '');
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    setSaving(true);
+    if (mode === 'none') await onSave(null);
+    else if (mode === 'color') await onSave({ type: 'color', value: color });
+    else if (mode === 'image') await onSave({ type: 'image', value: imageUrl.trim() });
+    setSaving(false);
+  }
+
+  return (
+    <div className="mx-auto max-w-2xl px-8 py-8">
+      <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">Giao diện</div>
+      <p className="mt-1 text-sm text-stone-500">Tùy chỉnh nền cho màn hình dữ liệu (áp dụng cho mọi người dùng).</p>
+
+      <div className="mt-6 rounded-lg border border-stone-200 bg-white p-5">
+        <div className="flex gap-1 rounded-md bg-stone-100 p-1">
+          <button onClick={() => setMode('none')} className={`flex-1 rounded-md py-1.5 text-sm ${mode === 'none' ? 'bg-white shadow-sm text-teal-900' : 'text-stone-500'}`}>Mặc định</button>
+          <button onClick={() => setMode('color')} className={`flex-1 rounded-md py-1.5 text-sm ${mode === 'color' ? 'bg-white shadow-sm text-teal-900' : 'text-stone-500'}`}>Màu nền</button>
+          <button onClick={() => setMode('image')} className={`flex-1 rounded-md py-1.5 text-sm ${mode === 'image' ? 'bg-white shadow-sm text-teal-900' : 'text-stone-500'}`}>Hình nền</button>
+        </div>
+
+        {mode === 'color' && (
+          <div className="mt-4">
+            <label className="mb-1 block text-xs font-medium text-stone-600">Chọn màu nền</label>
+            <div className="flex items-center gap-3">
+              <input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="h-10 w-16 cursor-pointer rounded border border-stone-300" />
+              <input value={color} onChange={(e) => setColor(e.target.value)} className="flex-1 rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
+            </div>
+          </div>
+        )}
+
+        {mode === 'image' && (
+          <div className="mt-4">
+            <label className="mb-1 block text-xs font-medium text-stone-600">Đường dẫn ảnh (URL)</label>
+            <input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://..."
+              className="w-full rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
+            <p className="mt-1 text-xs text-stone-400">Dán đường dẫn tới 1 ảnh đã có sẵn trên mạng (ví dụ ảnh tải lên Google Drive/Imgur ở chế độ công khai).</p>
+          </div>
+        )}
+
+        {mode !== 'none' && (
+          <div className="mt-4 rounded-md border border-dashed border-stone-300 p-4">
+            <div className="text-xs text-stone-400">Xem trước:</div>
+            <div className="mt-2 h-24 rounded-md" style={
+              mode === 'color' ? { backgroundColor: color } : { backgroundImage: `url(${imageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+            } />
+          </div>
+        )}
+
+        <button onClick={handleSave} disabled={saving}
+          className="mt-5 flex items-center gap-1.5 rounded-md bg-teal-900 px-4 py-2 text-sm text-white hover:bg-teal-800 disabled:opacity-60">
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          Lưu cài đặt
+        </button>
       </div>
     </div>
   );
