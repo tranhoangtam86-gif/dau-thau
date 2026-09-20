@@ -91,6 +91,59 @@ const ITEMS_COLUMNS = [
   { key: 'soLuong', label: 'Số lượng', type: 'number' },
   { key: 'donGia', label: 'Đơn giá', type: 'number' },
 ];
+
+// Mẫu email mặc định cho từng loại thông báo trong luồng "Giao việc"
+const EMAIL_TEMPLATE_TYPES = [
+  {
+    key: 'assign_individual',
+    label: 'Giao việc cho cá nhân',
+    placeholders: ['tieuDe', 'nguoiGui', 'link'],
+    defaultSubject: 'Bạn được giao điền thông tin: {tieuDe}',
+    defaultBody: '<p>{nguoiGui} đã giao cho bạn điền một phần thông tin trong hồ sơ "<b>{tieuDe}</b>".</p><p><a href="{link}">Bấm vào đây để điền thông tin</a></p>',
+  },
+  {
+    key: 'assign_unit',
+    label: 'Giao việc cho đơn vị',
+    placeholders: ['tieuDe', 'nguoiGui', 'tenDonVi', 'link'],
+    defaultSubject: 'Đơn vị của bạn được giao điền thông tin: {tieuDe}',
+    defaultBody: '<p>{nguoiGui} đã giao cho đơn vị <b>{tenDonVi}</b> điền một phần thông tin trong hồ sơ "<b>{tieuDe}</b>".</p><p>Bất kỳ ai trong đơn vị có thể nhận và điền. Sau khi điền xong, lãnh đạo đơn vị sẽ xác nhận.</p><p><a href="{link}">Bấm vào đây để điền thông tin</a></p>',
+  },
+  {
+    key: 'submit_for_review',
+    label: 'Nhân viên nộp, cần lãnh đạo duyệt',
+    placeholders: ['tieuDe', 'nguoiGui', 'tenDonVi'],
+    defaultSubject: 'Cần duyệt: {tieuDe}',
+    defaultBody: '<p>{nguoiGui} đã điền xong phần được giao trong hồ sơ "<b>{tieuDe}</b>" (đơn vị {tenDonVi}) và đang chờ bạn xác nhận.</p>',
+  },
+  {
+    key: 'complete_individual',
+    label: 'Cá nhân hoàn thành, báo người giao việc',
+    placeholders: ['tieuDe', 'nguoiGui'],
+    defaultSubject: '{nguoiGui} đã hoàn thành phần điền thông tin',
+    defaultBody: '<p>{nguoiGui} đã điền xong phần được giao trong hồ sơ "<b>{tieuDe}</b>" và xác nhận gửi lại cho bạn.</p>',
+  },
+  {
+    key: 'approve_unit',
+    label: 'Lãnh đạo duyệt xong, báo người giao việc',
+    placeholders: ['tieuDe', 'nguoiGui'],
+    defaultSubject: 'Đơn vị đã hoàn thành: {tieuDe}',
+    defaultBody: '<p>Lãnh đạo đơn vị ({nguoiGui}) đã xác nhận hoàn thành phần điền thông tin trong hồ sơ "<b>{tieuDe}</b>" và gửi lại cho bạn.</p>',
+  },
+];
+
+function renderEmailTemplate(templates, typeKey, vars) {
+  const def = EMAIL_TEMPLATE_TYPES.find((t) => t.key === typeKey);
+  const custom = templates?.[typeKey];
+  let subject = custom?.subject || def.defaultSubject;
+  let body = custom?.body || def.defaultBody;
+  Object.entries(vars).forEach(([k, v]) => {
+    const re = new RegExp('\\{' + k + '\\}', 'g');
+    subject = subject.replace(re, v ?? '');
+    body = body.replace(re, v ?? '');
+  });
+  return { subject, body };
+}
+
 // Schema giả cho "Gói thầu" — tương tự, chỉ chứa trường tùy chỉnh
 const GOI_THAU_BASE_SCHEMA = {
   key: 'goi_thau',
@@ -485,12 +538,15 @@ function RoleBadge({ role }) {
   );
 }
 
-function Toast({ message, tone }) {
+function Toast({ message, tone, onClose }) {
   if (!message) return null;
   const toneClass = tone === 'error' ? 'bg-rose-800 text-rose-50' : 'bg-teal-900 text-teal-50';
   return (
-    <div className={`fixed bottom-5 right-5 z-50 rounded-md px-4 py-2.5 text-sm shadow-lg print:hidden ${toneClass}`}>
-      {message}
+    <div className={`fixed bottom-5 right-5 z-50 flex max-w-sm items-start gap-2 rounded-md px-4 py-2.5 text-sm shadow-lg print:hidden ${toneClass}`}>
+      <span className="flex-1">{message}</span>
+      <button onClick={onClose} className="shrink-0 opacity-70 hover:opacity-100" aria-label="Đóng thông báo">
+        <X className="h-4 w-4" />
+      </button>
     </div>
   );
 }
@@ -659,7 +715,7 @@ export default function App() {
 
   const showToast = useCallback((message, tone = 'ok') => {
     setToast({ message, tone });
-    setTimeout(() => setToast(null), 2600);
+    setTimeout(() => setToast(null), tone === 'error' ? 15000 : 2600);
   }, []);
 
   /* ---------------- auth session ---------------- */
@@ -1489,30 +1545,34 @@ export default function App() {
     }]);
     const link = `${window.location.origin}${window.location.pathname}?assignment=${data.id}`;
     const title = recordTitle || DOC_TYPES[docType].label;
+    const templates = appSettings.email_templates;
 
     if (isUnit) {
       const unit = units.find((u) => u.id === target.unitId);
       const members = profiles.filter((p) => p.unit_id === target.unitId);
+      const { subject, body } = renderEmailTemplate(templates, 'assign_unit', {
+        tieuDe: title, nguoiGui: myProfile.full_name, tenDonVi: unit?.ten || '', link,
+      });
+      let emailFailCount = 0;
       for (const member of members) {
-        await sendNotificationEmail(
-          member.id,
-          `Đơn vị của bạn được giao điền thông tin: ${title}`,
-          `<p>${myProfile.full_name} đã giao cho đơn vị <b>${unit?.ten || ''}</b> điền một phần thông tin trong hồ sơ "<b>${title}</b>".</p>
-           <p>Bất kỳ ai trong đơn vị có thể nhận và điền. Sau khi điền xong, lãnh đạo đơn vị sẽ xác nhận.</p>
-           <p><a href="${link}">Bấm vào đây để điền thông tin</a></p>`
-        );
+        const ok = await sendNotificationEmail(member.id, subject, body);
+        if (!ok) emailFailCount++;
       }
-      showToast(`Đã giao việc cho đơn vị "${unit?.ten || ''}" và gửi email cho ${members.length} thành viên.`);
       appendLog('assign_field_unit', `${myProfile.full_name} đã giao điền thông tin (${fieldKeys.length} trường) cho đơn vị "${unit?.ten || ''}" trong hồ sơ "${title}".`);
+      if (emailFailCount === 0) {
+        showToast(`Đã giao việc cho đơn vị "${unit?.ten || ''}" và gửi email cho ${members.length} thành viên.`);
+      } else if (emailFailCount < members.length) {
+        showToast(`Đã giao việc, nhưng gửi email thất bại cho ${emailFailCount}/${members.length} thành viên (xem chi tiết lỗi ở thông báo trước đó).`, 'error');
+      }
+      // nếu emailFailCount === members.length, thông báo lỗi từ sendNotificationEmail của lần cuối vẫn đang hiển thị, không ghi đè
     } else {
-      await sendNotificationEmail(
-        target.userId,
-        `Bạn được giao điền thông tin: ${title}`,
-        `<p>${myProfile.full_name} đã giao cho bạn điền một phần thông tin trong hồ sơ "<b>${title}</b>".</p>
-         <p><a href="${link}">Bấm vào đây để điền thông tin</a></p>`
-      );
-      showToast('Đã giao việc và gửi email thông báo.');
+      const { subject, body } = renderEmailTemplate(templates, 'assign_individual', {
+        tieuDe: title, nguoiGui: myProfile.full_name, link,
+      });
+      const ok = await sendNotificationEmail(target.userId, subject, body);
       appendLog('assign_field', `${myProfile.full_name} đã giao điền thông tin (${fieldKeys.length} trường) cho "${nameOf(target.userId)}" trong hồ sơ "${title}".`);
+      if (ok) showToast('Đã giao việc và gửi email thông báo.');
+      // nếu !ok, thông báo lỗi từ sendNotificationEmail đang hiển thị, không ghi đè bằng thông báo thành công giả
     }
     return data.id;
   }
@@ -1535,13 +1595,12 @@ export default function App() {
     const { error } = await supabase.from('document_assignments').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', assignment.id);
     if (error) { showToast('Không thể xác nhận hoàn thành: ' + error.message, 'error'); return; }
     setMyAssignments((prev) => prev.map((a) => (a.id === assignment.id ? { ...a, status: 'completed', completedAt: new Date().toISOString() } : a)));
-    await sendNotificationEmail(
-      assignment.assignedBy,
-      `${myProfile.full_name} đã hoàn thành phần điền thông tin`,
-      `<p>${myProfile.full_name} đã điền xong phần được giao trong hồ sơ "<b>${recordTitle || DOC_TYPES[typeKey].label}</b>" và xác nhận gửi lại cho bạn.</p>`
-    );
-    showToast('Đã xác nhận hoàn thành và gửi lại cho người giao việc.');
+    const { subject, body } = renderEmailTemplate(appSettings.email_templates, 'complete_individual', {
+      tieuDe: recordTitle || DOC_TYPES[typeKey].label, nguoiGui: myProfile.full_name,
+    });
+    const ok = await sendNotificationEmail(assignment.assignedBy, subject, body);
     appendLog('complete_assignment', `${myProfile.full_name} đã hoàn thành phần điền thông tin được giao trong hồ sơ "${recordTitle || ''}".`);
+    if (ok) showToast('Đã xác nhận hoàn thành và gửi lại cho người giao việc.');
   }
 
   // Nhân viên trong đơn vị nhận việc: điền xong, nộp cho lãnh đạo đơn vị duyệt
@@ -1553,15 +1612,15 @@ export default function App() {
     if (error) { showToast('Không thể nộp: ' + error.message, 'error'); return; }
     setMyAssignments((prev) => prev.map((a) => (a.id === assignment.id ? { ...a, assignedTo: myId, status: 'submitted', submittedAt: new Date().toISOString() } : a)));
     const unit = units.find((u) => u.id === assignment.unitId);
+    let ok = true;
     if (unit?.leaderId) {
-      await sendNotificationEmail(
-        unit.leaderId,
-        `Cần duyệt: ${recordTitle || DOC_TYPES[typeKey].label}`,
-        `<p>${myProfile.full_name} đã điền xong phần được giao trong hồ sơ "<b>${recordTitle || DOC_TYPES[typeKey].label}</b>" (đơn vị ${unit.ten}) và đang chờ bạn xác nhận.</p>`
-      );
+      const { subject, body } = renderEmailTemplate(appSettings.email_templates, 'submit_for_review', {
+        tieuDe: recordTitle || DOC_TYPES[typeKey].label, nguoiGui: myProfile.full_name, tenDonVi: unit.ten,
+      });
+      ok = await sendNotificationEmail(unit.leaderId, subject, body);
     }
-    showToast('Đã nộp cho lãnh đạo đơn vị duyệt.');
     appendLog('submit_assignment', `${myProfile.full_name} đã nộp phần điền thông tin trong hồ sơ "${recordTitle || ''}" để lãnh đạo đơn vị duyệt.`);
+    if (ok) showToast('Đã nộp cho lãnh đạo đơn vị duyệt.');
   }
 
   // Lãnh đạo đơn vị duyệt phần nhân viên đã nộp -> báo lại cho người giao việc ban đầu
@@ -1569,13 +1628,12 @@ export default function App() {
     const { error } = await supabase.from('document_assignments').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', assignment.id);
     if (error) { showToast('Không thể duyệt: ' + error.message, 'error'); return; }
     setMyAssignments((prev) => prev.map((a) => (a.id === assignment.id ? { ...a, status: 'completed', completedAt: new Date().toISOString() } : a)));
-    await sendNotificationEmail(
-      assignment.assignedBy,
-      `Đơn vị đã hoàn thành: ${recordTitle || DOC_TYPES[typeKey].label}`,
-      `<p>Lãnh đạo đơn vị (${myProfile.full_name}) đã xác nhận hoàn thành phần điền thông tin trong hồ sơ "<b>${recordTitle || DOC_TYPES[typeKey].label}</b>" và gửi lại cho bạn.</p>`
-    );
-    showToast('Đã duyệt và gửi lại cho người giao việc.');
+    const { subject, body } = renderEmailTemplate(appSettings.email_templates, 'approve_unit', {
+      tieuDe: recordTitle || DOC_TYPES[typeKey].label, nguoiGui: myProfile.full_name,
+    });
+    const ok = await sendNotificationEmail(assignment.assignedBy, subject, body);
     appendLog('approve_assignment', `${myProfile.full_name} đã duyệt phần điền thông tin trong hồ sơ "${recordTitle || ''}" (đơn vị).`);
+    if (ok) showToast('Đã duyệt và gửi lại cho người giao việc.');
   }
 
 
@@ -2164,14 +2222,16 @@ export default function App() {
         {view === 'appearance' && amAdmin && (
           <AppearanceView
             background={appSettings.background}
-            onSave={(value) => saveAppSetting('background', value)}
+            onSaveBackground={(value) => saveAppSetting('background', value)}
+            emailTemplates={appSettings.email_templates}
+            onSaveEmailTemplates={(value) => saveAppSetting('email_templates', value)}
           />
         )}
 
         {view === 'log' && amAdmin && <AuditLog entries={auditLog} />}
       </main>
 
-      <Toast message={toast?.message} tone={toast?.tone} />
+      <Toast message={toast?.message} tone={toast?.tone} onClose={() => setToast(null)} />
     </div>
   );
 }
@@ -5401,7 +5461,8 @@ function UnitsView({ units, profiles, onCreateUnit, onDeleteUnit, onSetLeader, o
 /* Trang "Giao diện" — tùy chỉnh nền cho màn hình dữ liệu               */
 /* ------------------------------------------------------------------ */
 
-function AppearanceView({ background, onSave }) {
+function AppearanceView({ background, onSaveBackground, emailTemplates, onSaveEmailTemplates }) {
+  const [tab, setTab] = useState('background'); // background | email
   const [mode, setMode] = useState(background?.type || 'none'); // none | color | image
   const [color, setColor] = useState(background?.type === 'color' ? background.value : '#f5f5f4');
   const [imageUrl, setImageUrl] = useState(background?.type === 'image' ? background.value : '');
@@ -5409,18 +5470,30 @@ function AppearanceView({ background, onSave }) {
 
   async function handleSave() {
     setSaving(true);
-    if (mode === 'none') await onSave(null);
-    else if (mode === 'color') await onSave({ type: 'color', value: color });
-    else if (mode === 'image') await onSave({ type: 'image', value: imageUrl.trim() });
+    if (mode === 'none') await onSaveBackground(null);
+    else if (mode === 'color') await onSaveBackground({ type: 'color', value: color });
+    else if (mode === 'image') await onSaveBackground({ type: 'image', value: imageUrl.trim() });
     setSaving(false);
   }
 
   return (
     <div className="mx-auto max-w-2xl px-8 py-8">
       <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">Giao diện</div>
-      <p className="mt-1 text-sm text-stone-500">Tùy chỉnh nền cho màn hình dữ liệu (áp dụng cho mọi người dùng).</p>
+      <p className="mt-1 text-sm text-stone-500">Tùy chỉnh nền màn hình dữ liệu và nội dung email thông báo (áp dụng cho mọi người dùng).</p>
 
-      <div className="mt-6 rounded-lg border border-stone-200 bg-white p-5">
+      <div className="mt-4 flex gap-1 border-b border-stone-200">
+        <button onClick={() => setTab('background')}
+          className={`border-b-2 px-3 py-1.5 text-sm ${tab === 'background' ? 'border-teal-800 font-medium text-teal-900' : 'border-transparent text-stone-500 hover:text-stone-700'}`}>
+          Nền màn hình
+        </button>
+        <button onClick={() => setTab('email')}
+          className={`border-b-2 px-3 py-1.5 text-sm ${tab === 'email' ? 'border-teal-800 font-medium text-teal-900' : 'border-transparent text-stone-500 hover:text-stone-700'}`}>
+          Mẫu email
+        </button>
+      </div>
+
+      {tab === 'background' && (
+      <div className="mt-5 rounded-lg border border-stone-200 bg-white p-5">
         <div className="flex gap-1 rounded-md bg-stone-100 p-1">
           <button onClick={() => setMode('none')} className={`flex-1 rounded-md py-1.5 text-sm ${mode === 'none' ? 'bg-white shadow-sm text-teal-900' : 'text-stone-500'}`}>Mặc định</button>
           <button onClick={() => setMode('color')} className={`flex-1 rounded-md py-1.5 text-sm ${mode === 'color' ? 'bg-white shadow-sm text-teal-900' : 'text-stone-500'}`}>Màu nền</button>
@@ -5460,6 +5533,92 @@ function AppearanceView({ background, onSave }) {
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           Lưu cài đặt
         </button>
+      </div>
+      )}
+
+      {tab === 'email' && (
+        <EmailTemplatesEditor templates={emailTemplates} onSave={onSaveEmailTemplates} />
+      )}
+    </div>
+  );
+}
+
+/* ---------------- Chỉnh mẫu email cho từng loại thông báo ---------------- */
+
+function EmailTemplatesEditor({ templates, onSave }) {
+  const [selectedType, setSelectedType] = useState(EMAIL_TEMPLATE_TYPES[0].key);
+  const def = EMAIL_TEMPLATE_TYPES.find((t) => t.key === selectedType);
+  const current = templates?.[selectedType];
+  const [subject, setSubject] = useState(current?.subject || def.defaultSubject);
+  const [body, setBody] = useState(current?.body || def.defaultBody);
+  const [saving, setSaving] = useState(false);
+  const [saveDone, setSaveDone] = useState(false);
+
+  function selectType(key) {
+    setSelectedType(key);
+    const d = EMAIL_TEMPLATE_TYPES.find((t) => t.key === key);
+    const c = templates?.[key];
+    setSubject(c?.subject || d.defaultSubject);
+    setBody(c?.body || d.defaultBody);
+    setSaveDone(false);
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    await onSave({ ...(templates || {}), [selectedType]: { subject, body } });
+    setSaving(false);
+    setSaveDone(true);
+    setTimeout(() => setSaveDone(false), 2500);
+  }
+
+  function handleReset() {
+    setSubject(def.defaultSubject);
+    setBody(def.defaultBody);
+  }
+
+  return (
+    <div className="mt-5 rounded-lg border border-stone-200 bg-white p-5">
+      <label className="mb-1 block text-xs font-medium text-stone-600">Loại thông báo</label>
+      <select value={selectedType} onChange={(e) => selectType(e.target.value)}
+        className="w-full rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm">
+        {EMAIL_TEMPLATE_TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+      </select>
+
+      <p className="mt-2 text-xs text-stone-400">
+        Biến có thể dùng: {def.placeholders.map((p) => `{${p}}`).join(', ')} — hệ thống sẽ tự thay bằng giá trị thật khi gửi.
+      </p>
+
+      <div className="mt-3">
+        <label className="mb-1 block text-xs font-medium text-stone-600">Tiêu đề email</label>
+        <input value={subject} onChange={(e) => setSubject(e.target.value)} className="w-full rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
+      </div>
+
+      <div className="mt-3">
+        <label className="mb-1 block text-xs font-medium text-stone-600">Nội dung email (có thể dùng thẻ HTML như &lt;b&gt;, &lt;p&gt;)</label>
+        <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={6}
+          className="w-full rounded-md border border-stone-300 px-3 py-1.5 font-mono text-xs" />
+      </div>
+
+      <div className="mt-3 rounded-md border border-dashed border-stone-300 p-3">
+        <div className="text-xs text-stone-400">Xem trước (dữ liệu mẫu):</div>
+        <div className="mt-1 text-sm font-medium text-stone-800">
+          {renderEmailTemplate({ [selectedType]: { subject, body } }, selectedType, Object.fromEntries(def.placeholders.map((p) => [p, p === 'link' ? '#' : `[${p}]`]))).subject}
+        </div>
+        <div className="mt-1 text-sm text-stone-600" dangerouslySetInnerHTML={{
+          __html: renderEmailTemplate({ [selectedType]: { subject, body } }, selectedType, Object.fromEntries(def.placeholders.map((p) => [p, p === 'link' ? '#' : `[${p}]`]))).body,
+        }} />
+      </div>
+
+      <div className="mt-4 flex items-center gap-2">
+        <button onClick={handleSave} disabled={saving}
+          className="flex items-center gap-1.5 rounded-md bg-teal-900 px-4 py-2 text-sm text-white hover:bg-teal-800 disabled:opacity-60">
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          Lưu mẫu này
+        </button>
+        <button onClick={handleReset} className="rounded-md border border-stone-300 px-3 py-2 text-sm text-stone-600 hover:bg-stone-50">
+          Khôi phục mặc định
+        </button>
+        {saveDone && <span className="flex items-center gap-1 text-xs text-teal-700"><CheckCircle2 className="h-3.5 w-3.5" /> Đã lưu.</span>}
       </div>
     </div>
   );
