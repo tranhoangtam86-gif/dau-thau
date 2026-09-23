@@ -584,7 +584,7 @@ function Login({ onLogin }) {
   return (
     <div className="flex h-full min-h-[560px] items-center justify-center bg-stone-50 px-6">
       <div className="w-full max-w-sm rounded-lg border border-stone-200 bg-white p-8 shadow-sm">
-        <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">
+        <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-xl text-stone-900">
           Hồ sơ Đấu thầu
         </div>
         <p className="mt-1 text-sm text-stone-500">Đăng nhập để tiếp tục</p>
@@ -1819,7 +1819,7 @@ export default function App() {
       {/* Sidebar */}
       <aside className="flex w-64 shrink-0 flex-col bg-teal-950 text-teal-50 print:hidden">
         <div className="border-b border-teal-900 px-5 py-5">
-          <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-lg leading-tight">
+          <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-lg leading-tight">
             Hồ sơ Đấu thầu
           </div>
           <div className="mt-0.5 text-xs text-teal-300/80">Quản lý biểu mẫu &amp; hồ sơ</div>
@@ -2257,7 +2257,7 @@ function Dashboard({ records, projects, allProjectsEmpty, amAdmin, projectFilter
 
   return (
     <div className="mx-auto max-w-4xl px-8 py-10">
-      <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-2xl text-stone-900">
+      <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-2xl text-stone-900">
         Tổng quan hồ sơ đấu thầu
       </div>
       <p className="mt-1 text-sm text-stone-500">
@@ -2346,7 +2346,7 @@ function ListView({
     <div className="mx-auto max-w-5xl px-8 py-8">
       <div className="flex items-center justify-between">
         <div>
-          <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">
+          <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-xl text-stone-900">
             {schema.label}
           </div>
           <div className="text-sm text-stone-500">{list.length} hồ sơ</div>
@@ -2804,7 +2804,7 @@ function FormView({ schema, formData, errors, editing, saving, projects, package
         <ChevronLeft className="h-4 w-4" /> Quay lại
       </button>
 
-      <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">
+      <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-xl text-stone-900">
         {editing ? `Chỉnh sửa — ${schema.label}` : `Tạo mới — ${schema.label}`}
       </div>
 
@@ -3009,7 +3009,7 @@ function DetailView({ schema, record, project, canEdit, canDelete, canLock, canC
           <div className="mx-auto mt-1 h-px w-16 bg-stone-400" />
         </div>
 
-        <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="mt-8 text-center text-xl font-semibold uppercase text-teal-950">
+        <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="mt-8 text-center text-xl font-semibold uppercase text-teal-950">
           {schema.docTitle}
         </div>
         {record.tenGoiThau && <div className="mt-1 text-center text-sm italic text-stone-500">{record.tenGoiThau}</div>}
@@ -3252,7 +3252,7 @@ function AuditLog({ entries }) {
 
   return (
     <div className="mx-auto max-w-4xl px-8 py-8">
-      <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">Nhật ký hoạt động</div>
+      <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-xl text-stone-900">Nhật ký hoạt động</div>
       <p className="mt-1 text-sm text-stone-500">Lưu 300 hoạt động gần nhất trên toàn hệ thống.</p>
 
       <div className="relative mt-4">
@@ -3360,7 +3360,7 @@ function ProjectsView({
     <div className="mx-auto max-w-6xl px-8 py-8">
       <div className="flex items-center justify-between">
         <div>
-          <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">Dự án</div>
+          <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-xl text-stone-900">Dự án</div>
           <p className="mt-1 text-sm text-stone-500">
             Chọn 1 dự án bên trái để xem chi tiết và quản lý gói thầu. Việc chọn ai được làm gì thực hiện ở mục "Người dùng".
           </p>
@@ -3922,7 +3922,7 @@ function UsersView({
   return (
     <div className="mx-auto max-w-4xl px-8 py-8 space-y-6">
       <div>
-        <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">Người dùng</div>
+        <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-xl text-stone-900">Người dùng</div>
         <p className="mt-1 text-sm text-stone-500">Tạo tài khoản và phân quyền chi tiết (Thêm / Xem / Sửa / Khóa / Xóa) theo từng dự án và từng loại hồ sơ.</p>
       </div>
 
@@ -4169,7 +4169,7 @@ function TemplateEditorView({ getSchema, projectTypes, customFields, hiddenField
 
   return (
     <div className="mx-auto max-w-5xl px-8 py-8">
-      <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">Tùy chỉnh mẫu</div>
+      <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-xl text-stone-900">Tùy chỉnh mẫu</div>
       <p className="mt-1 text-sm text-stone-500">Khai báo thêm trường thông tin và thiết kế bố cục bản in cho từng loại hồ sơ. Có thể tạo mẫu riêng theo từng loại dự án.</p>
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -4958,7 +4958,7 @@ function MyAssignmentsView({ assignments, records, nameOf, unitsById, myId, myUn
 
   return (
     <div className="mx-auto max-w-3xl px-8 py-8">
-      <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">Nhiệm vụ của tôi</div>
+      <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-xl text-stone-900">Nhiệm vụ của tôi</div>
       <p className="mt-1 text-sm text-stone-500">Những phần thông tin bạn (hoặc đơn vị bạn) được giao điền, và những việc cần bạn duyệt với vai trò lãnh đạo đơn vị.</p>
 
       <div className="mt-5">
@@ -5091,7 +5091,7 @@ function AssignmentFillView({ schema, record, project, assignment, isLeaderRevie
         <ChevronLeft className="h-4 w-4" /> Quay lại danh sách nhiệm vụ
       </button>
 
-      <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">
+      <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-xl text-stone-900">
         {isLeaderReview ? 'Duyệt phần đã điền — ' : 'Điền thông tin được giao — '}{schema.label}
       </div>
       {project && <p className="mt-1 text-sm text-stone-500">Dự án: {project.ten}</p>}
@@ -5316,7 +5316,7 @@ function UnitsView({ units, profiles, onCreateUnit, onDeleteUnit, onSetLeader, o
 
   return (
     <div className="mx-auto max-w-4xl px-8 py-8">
-      <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">Đơn vị</div>
+      <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-xl text-stone-900">Đơn vị</div>
       <p className="mt-1 text-sm text-stone-500">
         Chia người dùng theo đơn vị/phòng ban. Người được đặt làm <strong>Lãnh đạo đơn vị</strong> sẽ tự động xem và xác nhận được
         hồ sơ do nhân viên trong đơn vị mình tạo, không cần cấp quyền riêng theo dự án.
@@ -5478,7 +5478,7 @@ function AppearanceView({ background, onSaveBackground, emailTemplates, onSaveEm
 
   return (
     <div className="mx-auto max-w-2xl px-8 py-8">
-      <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">Giao diện</div>
+      <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-xl text-stone-900">Giao diện</div>
       <p className="mt-1 text-sm text-stone-500">Tùy chỉnh nền màn hình dữ liệu và nội dung email thông báo (áp dụng cho mọi người dùng).</p>
 
       <div className="mt-4 flex gap-1 border-b border-stone-200">

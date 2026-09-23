@@ -79,6 +79,30 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ success: true, user: newUser.user }), { status: 200, headers: corsHeaders })
     }
 
+    if (body.action === 'reset_password') {
+      const { user_id, new_password } = body
+      if (!user_id || !new_password || new_password.length < 6) {
+        return new Response(JSON.stringify({ error: 'Thiếu user_id hoặc mật khẩu mới (tối thiểu 6 ký tự)' }), { status: 400, headers: corsHeaders })
+      }
+      const { error: pwError } = await adminClient.auth.admin.updateUserById(user_id, { password: new_password })
+      if (pwError) {
+        return new Response(JSON.stringify({ error: pwError.message }), { status: 400, headers: corsHeaders })
+      }
+      return new Response(JSON.stringify({ success: true }), { status: 200, headers: corsHeaders })
+    }
+
+    if (body.action === 'update_email') {
+      const { user_id, new_email } = body
+      if (!user_id || !new_email) {
+        return new Response(JSON.stringify({ error: 'Thiếu user_id hoặc email mới' }), { status: 400, headers: corsHeaders })
+      }
+      const { error: emailError } = await adminClient.auth.admin.updateUserById(user_id, { email: new_email, email_confirm: true })
+      if (emailError) {
+        return new Response(JSON.stringify({ error: emailError.message }), { status: 400, headers: corsHeaders })
+      }
+      return new Response(JSON.stringify({ success: true }), { status: 200, headers: corsHeaders })
+    }
+
     if (body.action === 'delete') {
       const { user_id } = body
       if (!user_id) {
