@@ -156,6 +156,86 @@ const ITEMS_COLUMNS = [
 // Schema giả cho "Gói thầu" — tương tự, chỉ chứa trường tùy chỉnh
 const GOI_THAU_BASE_SCHEMA = { key: 'goi_thau', label: 'Gói thầu (thông tin riêng)', fields: [] };
 
+/* ---------------- helper: điền dữ liệu vào mẫu Excel (.xlsx) đã tải lên ---------------- */
+// Thay các ô chứa đúng {ten_truong}, hoặc {ten_truong} nằm chung ô với văn bản khác, bằng dữ liệu thật.
+function fillExcelScalarPlaceholders(ws, mergeData) {
+  const ref = ws['!ref'];
+  if (!ref) return;
+  const range = XLSX.utils.decode_range(ref);
+  for (let r = range.s.r; r <= range.e.r; r++) {
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const addr = XLSX.utils.encode_cell({ r, c });
+      const cell = ws[addr];
+      if (!cell || typeof cell.v !== 'string' || !cell.v.includes('{')) continue;
+      const exact = cell.v.match(/^\{([a-zA-Z0-9_]+)\}$/);
+      if (exact && exact[1] !== 'hang_muc' && Object.prototype.hasOwnProperty.call(mergeData, exact[1])) {
+        cell.v = mergeData[exact[1]];
+        cell.t = typeof cell.v === 'number' ? 'n' : 's';
+        delete cell.w;
+        continue;
+      }
+      let replaced = cell.v;
+      Object.keys(mergeData).forEach((k) => { replaced = replaced.split(`{${k}}`).join(String(mergeData[k] ?? '')); });
+      if (replaced !== cell.v) { cell.v = replaced; cell.t = 's'; delete cell.w; }
+    }
+  }
+}
+// Tìm ô đánh dấu {hang_muc} và nhân dòng đó cho từng hạng mục hàng hóa/dịch vụ, giữ định dạng của dòng mẫu.
+function fillExcelItemsAtMarker(ws, items) {
+  const ref = ws['!ref'];
+  if (!ref) return;
+  const range = XLSX.utils.decode_range(ref);
+  let markerAddr = null;
+  for (let r = range.s.r; r <= range.e.r && !markerAddr; r++) {
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const addr = XLSX.utils.encode_cell({ r, c });
+      const cell = ws[addr];
+      if (cell && typeof cell.v === 'string' && cell.v.trim() === '{hang_muc}') { markerAddr = { r, c }; break; }
+    }
+  }
+  if (!markerAddr) return;
+  const { r: r0, c: c0 } = markerAddr;
+
+  if (range.e.c < c0 + ITEMS_COLUMNS.length - 1) {
+    range.e.c = c0 + ITEMS_COLUMNS.length - 1;
+    ws['!ref'] = XLSX.utils.encode_range(range);
+  }
+  if (!items.length) {
+    const addr = XLSX.utils.encode_cell({ r: r0, c: c0 });
+    if (ws[addr]) { ws[addr].v = ''; delete ws[addr].w; }
+    return;
+  }
+
+  const styleCells = ITEMS_COLUMNS.map((_, i) => ws[XLSX.utils.encode_cell({ r: r0, c: c0 + i })]);
+  const insertCount = items.length - 1;
+  if (insertCount > 0) {
+    for (let r = range.e.r; r > r0; r--) {
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        const fromAddr = XLSX.utils.encode_cell({ r, c });
+        const toAddr = XLSX.utils.encode_cell({ r: r + insertCount, c });
+        if (ws[fromAddr]) { ws[toAddr] = ws[fromAddr]; delete ws[fromAddr]; } else { delete ws[toAddr]; }
+      }
+    }
+    if (ws['!merges']) {
+      ws['!merges'] = ws['!merges'].map((m) => (m.s.r > r0
+        ? { s: { r: m.s.r + insertCount, c: m.s.c }, e: { r: m.e.r + insertCount, c: m.e.c } }
+        : m));
+    }
+    range.e.r += insertCount;
+    ws['!ref'] = XLSX.utils.encode_range(range);
+  }
+
+  items.forEach((item, i) => {
+    const r = r0 + i;
+    ITEMS_COLUMNS.forEach((col, ci) => {
+      const addr = XLSX.utils.encode_cell({ r, c: c0 + ci });
+      const value = col.type === 'number' ? formatVND(item[col.key]) : (item[col.key] ?? '');
+      const base = i === 0 ? ws[addr] : styleCells[ci];
+      ws[addr] = { v: value, t: 's', ...(base && base.s ? { s: base.s } : {}) };
+    });
+  });
+}
+
 const ROLE_LABELS = { admin: 'Quản trị viên', editor: 'Biên tập', viewer: 'Chỉ xem' };
 const ROLE_BADGE_CLASS = {
   admin: 'bg-amber-100 text-amber-800',
@@ -640,6 +720,7 @@ export default function App() {
   const [templateFieldMode, setTemplateFieldModeState] = useState({}); // { [docType]: { [projectTypeId]: 'extend' | 'replace' } }
   const [printTemplates, setPrintTemplates] = useState({}); // { [docType]: { layout: [...] } }
   const [docxTemplates, setDocxTemplates] = useState({}); // { [docType]: { storage_path } }
+  const [excelTemplates, setExcelTemplates] = useState({}); // { [docType]: { [projectTypeId]: { storage_path } } }
   const [myAssignments, setMyAssignments] = useState([]); // giao việc điền thông tin (của tôi hoặc do tôi giao)
   const [deepLinkAssignmentId, setDeepLinkAssignmentId] = useState(null);
   const [activeAssignmentId, setActiveAssignmentId] = useState(null);
@@ -697,7 +778,7 @@ export default function App() {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      const [profileRes, profilesRes, projectsRes, permsRes, typesRes, auditRes, templatesRes, customFieldsRes, printTemplatesRes, hiddenFieldsRes, fieldOverridesRes, docxTemplatesRes, assignmentsRes, projectStepsRes, goiThauRes, templateModeRes] = await Promise.all([
+      const [profileRes, profilesRes, projectsRes, permsRes, typesRes, auditRes, templatesRes, customFieldsRes, printTemplatesRes, hiddenFieldsRes, fieldOverridesRes, docxTemplatesRes, excelTemplatesRes, assignmentsRes, projectStepsRes, goiThauRes, templateModeRes] = await Promise.all([
         supabase.from('profiles').select('id, full_name, is_admin').eq('id', session.user.id).single(),
         supabase.from('profiles').select('id, full_name, is_admin').order('full_name'),
         supabase.from('projects').select('id, ten, ma_du_an, mo_ta, type_id, data, created_at').order('created_at'),
@@ -710,6 +791,7 @@ export default function App() {
         supabase.from('hidden_builtin_fields').select('doc_type, field_name, project_type_id'),
         supabase.from('field_overrides').select('doc_type, field_name, label, field_type, required, options, project_type_id'),
         supabase.from('docx_templates').select('doc_type, project_type_id, storage_path'),
+        supabase.from('excel_templates').select('doc_type, project_type_id, storage_path'),
         supabase.from('document_assignments').select('id, document_id, doc_type, assigned_to, assigned_by, field_keys, status, created_at, completed_at'),
         supabase.from('project_document_types').select('id, project_id, doc_type, sort_order, completed'),
         supabase.from('goi_thau').select('id, project_id, ma_goi_thau, ten_goi_thau, data, created_at'),
@@ -786,6 +868,12 @@ export default function App() {
         dtByType[t.doc_type][t.project_type_id] = { storage_path: t.storage_path };
       });
       setDocxTemplates(dtByType);
+      const etByType = {};
+      (excelTemplatesRes.data || []).forEach((t) => {
+        if (!etByType[t.doc_type]) etByType[t.doc_type] = {};
+        etByType[t.doc_type][t.project_type_id] = { storage_path: t.storage_path };
+      });
+      setExcelTemplates(etByType);
       setMyAssignments((assignmentsRes.data || []).map((a) => ({
         id: a.id, documentId: a.document_id, docType: a.doc_type, assignedTo: a.assigned_to, assignedBy: a.assigned_by,
         fieldKeys: a.field_keys, status: a.status, createdAt: a.created_at, completedAt: a.completed_at,
@@ -904,6 +992,10 @@ export default function App() {
   }
   function resolveDocxTemplate(docType, projectTypeId) {
     const byType = docxTemplates[docType] || {};
+    return (projectTypeId && byType[projectTypeId]) || byType[GENERIC_TYPE_ID] || null;
+  }
+  function resolveExcelTemplate(docType, projectTypeId) {
+    const byType = excelTemplates[docType] || {};
     return (projectTypeId && byType[projectTypeId]) || byType[GENERIC_TYPE_ID] || null;
   }
 
@@ -1433,8 +1525,57 @@ export default function App() {
     }
   }
 
+  /* ---------------- mẫu file Excel (.xlsx) cho Thu thập báo giá ---------------- */
+  async function uploadExcelTemplate(docType, file, projectTypeId) {
+    const typeKey = projectTypeId || GENERIC_TYPE_ID;
+    const path = `${docType}_${typeKey}.xlsx`;
+    const { error: uploadError } = await supabase.storage.from('excel-templates').upload(path, file, { upsert: true });
+    if (uploadError) { showToast('Không thể tải lên file mẫu Excel: ' + uploadError.message, 'error'); return; }
+    const { data, error } = await supabase
+      .from('excel_templates')
+      .upsert({ doc_type: docType, project_type_id: typeKey, storage_path: path, updated_by: myId, updated_at: new Date().toISOString() }, { onConflict: 'doc_type,project_type_id' })
+      .select()
+      .single();
+    if (error) { showToast('Không thể lưu thông tin mẫu Excel: ' + error.message, 'error'); return; }
+    setExcelTemplates((prev) => ({ ...prev, [docType]: { ...(prev[docType] || {}), [typeKey]: { storage_path: data.storage_path } } }));
+    await autoCreateFieldsFromExcel(docType, file, projectTypeId);
+    showToast('Đã tải lên mẫu Excel.');
+  }
+
+  /* quét file Excel vừa tải lên, tìm các thẻ {ten_truong} (ô chứa văn bản này) và tự tạo trường nhập liệu nếu chưa có */
+  async function autoCreateFieldsFromExcel(docType, file, projectTypeId) {
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      let plain = '';
+      wb.SheetNames.forEach((name) => { plain += XLSX.utils.sheet_to_csv(wb.Sheets[name]) + '\n'; });
+      const found = [...new Set([...plain.matchAll(/\{([a-zA-Z0-9_]+)\}/g)].map((m) => m[1]))].filter((k) => k !== 'hang_muc');
+      if (found.length === 0) return;
+      const schema = getSchema(docType, projectTypeId);
+      const known = new Set(['du_an', ...schema.fields.map((f) => f.name)]);
+      const missing = found.filter((k) => !known.has(k));
+      if (missing.length === 0) return;
+      for (const key of missing) {
+        const label = key.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+        await createCustomField(docType, { field_key: key, label, field_type: 'text', required: false, options: null }, projectTypeId, true);
+      }
+      showToast(`Đã tự động tạo ${missing.length} trường mới từ file mẫu Excel: ${missing.map((k) => k.replace(/_/g, ' ')).join(', ')}.`);
+    } catch (err) {
+      showToast('Đã tải lên mẫu, nhưng không thể tự quét trường trong file Excel: ' + (err.message || 'lỗi không xác định'), 'error');
+    }
+  }
+
   /* ---------------- xuất Excel cho Thu thập báo giá ---------------- */
-  function exportBaoGiaExcel(schema, record, project) {
+  async function exportBaoGiaExcel(schema, record, project, docType, projectTypeId) {
+    const tpl = resolveExcelTemplate(docType || 'bao_gia', projectTypeId);
+    if (tpl) {
+      await exportBaoGiaExcelFromTemplate(tpl, schema, record, project);
+    } else {
+      exportBaoGiaExcelGeneric(schema, record, project);
+    }
+  }
+
+  function exportBaoGiaExcelGeneric(schema, record, project) {
     try {
       const headerRows = schema.fields
         .filter((f) => f.type !== 'items' && f.type !== 'table' && f.name !== 'tenGoiThau')
@@ -1457,6 +1598,43 @@ export default function App() {
       XLSX.writeFile(wb, `${title}.xlsx`);
     } catch (err) {
       showToast('Không thể xuất Excel: ' + (err.message || 'lỗi không xác định'), 'error');
+    }
+  }
+
+  /* xuất Excel theo đúng mẫu công ty đã tải lên: điền vào các ô {ten_truong}, và nhân dòng hạng mục tại ô {hang_muc} */
+  async function exportBaoGiaExcelFromTemplate(tpl, schema, record, project) {
+    try {
+      const { data: fileBlob, error } = await supabase.storage.from('excel-templates').download(tpl.storage_path);
+      if (error) throw error;
+      const buf = await fileBlob.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array', cellStyles: true });
+
+      const mergeData = { du_an: project ? project.ten : '' };
+      schema.fields.forEach((f) => {
+        let v = record[f.name];
+        if (f.type === 'number') v = formatVND(v);
+        if (f.type === 'date') v = formatDateVN(v);
+        mergeData[f.name] = v ?? '';
+      });
+      const items = Array.isArray(record.hangMuc) ? record.hangMuc : [];
+
+      wb.SheetNames.forEach((name) => {
+        const ws = wb.Sheets[name];
+        fillExcelScalarPlaceholders(ws, mergeData);
+        fillExcelItemsAtMarker(ws, items);
+      });
+
+      const out = XLSX.write(wb, { type: 'array', bookType: 'xlsx', cellStyles: true });
+      const blob = new Blob([out], { type: 'application/octet-stream' });
+      const title = record.tenGoiThau || record.maGoiThau || 'bao_gia';
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${title}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      showToast('Không thể xuất Excel theo mẫu: ' + (err.message || 'lỗi không xác định. Kiểm tra lại các thẻ {ten_truong} trong file mẫu.'), 'error');
     }
   }
 
@@ -1956,7 +2134,7 @@ export default function App() {
             hasDocxTemplate={!!resolveDocxTemplate(activeType, detailProject?.typeId)}
             onExportDocx={() => exportDocx(activeType, detailRecord, detailProject)}
             onExportPdf={exportPdf}
-            onExportExcel={() => exportBaoGiaExcel(getSchema(activeType, detailProject?.typeId), detailRecord, detailProject)}
+            onExportExcel={() => exportBaoGiaExcel(getSchema(activeType, detailProject?.typeId), detailRecord, detailProject, activeType, detailProject?.typeId)}
             onAssign={() => setAssigningRecord({ docType: activeType, record: detailRecord })}
             onBack={() => setView('list')}
             onEdit={() => openEditForm(activeType, detailRecord)}
@@ -2035,9 +2213,11 @@ export default function App() {
             fieldOverrides={fieldOverrides}
             printTemplates={printTemplates}
             docxTemplates={docxTemplates}
+            excelTemplates={excelTemplates}
             templateFieldMode={templateFieldMode}
             onSetTemplateFieldMode={setTemplateFieldMode}
             onUploadDocxTemplate={uploadDocxTemplate}
+            onUploadExcelTemplate={uploadExcelTemplate}
             onCreateField={createCustomField}
             onDeleteField={deleteCustomField}
             onReorderField={reorderCustomField}
@@ -3929,12 +4109,13 @@ function UsersView({
 /* Trang "Tùy chỉnh mẫu" — khai báo trường thông tin + thiết kế bản in */
 /* ------------------------------------------------------------------ */
 
-function TemplateEditorView({ getSchema, projectTypes, customFields, hiddenFields, fieldOverrides, printTemplates, docxTemplates, templateFieldMode, onSetTemplateFieldMode, onUploadDocxTemplate, onCreateField, onDeleteField, onReorderField, onUpdateField, onToggleHideField, onSaveFieldOverride, onSavePrintTemplate, showToast }) {
+function TemplateEditorView({ getSchema, projectTypes, customFields, hiddenFields, fieldOverrides, printTemplates, docxTemplates, excelTemplates, templateFieldMode, onSetTemplateFieldMode, onUploadDocxTemplate, onUploadExcelTemplate, onCreateField, onDeleteField, onReorderField, onUpdateField, onToggleHideField, onSaveFieldOverride, onSavePrintTemplate, showToast }) {
   const [docType, setDocType] = useState('bao_gia');
-  const [tab, setTab] = useState('fields'); // fields | print | docx
+  const [tab, setTab] = useState('fields'); // fields | print | docx | excel
   const [projectTypeId, setProjectTypeId] = useState(GENERIC_TYPE_ID);
   const isProjectFields = docType === 'project' || docType === 'goi_thau';
   const supportsDocx = !isProjectFields && ['ho_so_yeu_cau', 'bien_ban', 'hop_dong'].includes(docType);
+  const supportsExcel = docType === 'bao_gia';
   const currentMode = (templateFieldMode[docType] && templateFieldMode[docType][projectTypeId]) || 'extend';
 
   return (
@@ -3972,6 +4153,12 @@ function TemplateEditorView({ getSchema, projectTypes, customFields, hiddenField
               <button onClick={() => setTab('docx')}
                 className={`border-b-2 px-3 py-1.5 text-sm ${tab === 'docx' ? 'border-teal-800 font-medium text-teal-900' : 'border-transparent text-stone-500 hover:text-stone-700'}`}>
                 File mẫu Word
+              </button>
+            )}
+            {supportsExcel && (
+              <button onClick={() => setTab('excel')}
+                className={`border-b-2 px-3 py-1.5 text-sm ${tab === 'excel' ? 'border-teal-800 font-medium text-teal-900' : 'border-transparent text-stone-500 hover:text-stone-700'}`}>
+                File mẫu Excel
               </button>
             )}
           </div>
@@ -4035,6 +4222,15 @@ function TemplateEditorView({ getSchema, projectTypes, customFields, hiddenField
             onUpload={(file) => onUploadDocxTemplate(docType, file, projectTypeId)}
           />
         )}
+        {!isProjectFields && tab === 'excel' && supportsExcel && (
+          <ExcelTemplateManager
+            key={docType + projectTypeId}
+            docType={docType}
+            schema={getSchema(docType, projectTypeId)}
+            existing={excelTemplates[docType]?.[projectTypeId]}
+            onUpload={(file) => onUploadExcelTemplate(docType, file, projectTypeId)}
+          />
+        )}
       </div>
     </div>
   );
@@ -4090,6 +4286,67 @@ function DocxTemplateManager({ docType, schema, existing, onUpload }) {
               <span className="rounded bg-stone-100 px-1.5 py-0.5 font-mono text-xs text-stone-700">{`{${f.name}}`}</span>
             </div>
           ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Quản lý mẫu file Excel ---------------- */
+
+function ExcelTemplateManager({ docType, schema, existing, onUpload }) {
+  const fileInputRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+
+  async function handleFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    await onUpload(file);
+    setUploading(false);
+    e.target.value = '';
+  }
+
+  return (
+    <div className="grid grid-cols-2 gap-5">
+      <div className="rounded-lg border border-stone-200 bg-white p-5">
+        <div className="text-sm font-medium text-stone-700">File mẫu Excel (.xlsx)</div>
+        <p className="mt-1 text-xs text-stone-400">
+          Tải lên file Excel thu thập báo giá có sẵn của công ty. Trong file, gõ các thẻ dạng <span className="font-mono">{'{ten_truong}'}</span> vào
+          đúng ô muốn chèn dữ liệu (ví dụ <span className="font-mono">{'{ten_don_vi}'}</span>). Với bảng hạng mục hàng hóa/dịch vụ, đặt 1 ô đánh dấu
+          <span className="font-mono"> {'{hang_muc}'}</span> tại ô đầu dòng (cột "Tên hàng hóa"); hệ thống sẽ tự nhân dòng đó cho từng hạng mục, giữ
+          nguyên định dạng của dòng mẫu. Sau khi tải lên, hệ thống tự quét file và tự tạo trường nhập liệu cho thẻ nào chưa có.
+        </p>
+        {existing && (
+          <div className="mt-2 flex items-center gap-1.5 text-xs text-teal-700">
+            <CheckCircle2 className="h-3.5 w-3.5" /> Đã có mẫu Excel cho loại hồ sơ này.
+          </div>
+        )}
+        <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
+          className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-md border border-teal-800 py-2 text-sm text-teal-900 hover:bg-teal-50 disabled:opacity-60">
+          {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+          {existing ? 'Tải lên file khác (thay thế)' : 'Tải lên file .xlsx'}
+        </button>
+        <input ref={fileInputRef} type="file" accept=".xlsx" onChange={handleFile} className="hidden" />
+      </div>
+
+      <div className="rounded-lg border border-stone-200 bg-white p-5">
+        <div className="text-sm font-medium text-stone-700">Danh sách khóa trường để gõ vào file Excel</div>
+        <div className="mt-2 max-h-72 overflow-y-auto divide-y divide-stone-100 text-sm">
+          <div className="flex items-center justify-between py-1.5">
+            <span className="text-stone-600">Tên dự án</span>
+            <span className="rounded bg-stone-100 px-1.5 py-0.5 font-mono text-xs text-stone-700">{'{du_an}'}</span>
+          </div>
+          {schema.fields.filter((f) => f.type !== 'items' && f.type !== 'table').map((f) => (
+            <div key={f.name} className="flex items-center justify-between py-1.5">
+              <span className="text-stone-600">{f.label}</span>
+              <span className="rounded bg-stone-100 px-1.5 py-0.5 font-mono text-xs text-stone-700">{`{${f.name}}`}</span>
+            </div>
+          ))}
+          <div className="flex items-center justify-between py-1.5">
+            <span className="text-stone-600">Ô đánh dấu dòng hạng mục hàng hóa</span>
+            <span className="rounded bg-stone-100 px-1.5 py-0.5 font-mono text-xs text-stone-700">{'{hang_muc}'}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -4166,6 +4423,7 @@ function FieldEditForm({ initial, onSave, onCancel }) {
         className="w-full rounded-md border border-stone-300 px-2 py-1.5 text-sm" />
       <div className="flex items-center gap-2">
         <select value={fieldType} onChange={(e) => setFieldType(e.target.value)} className="flex-1 rounded-md border border-stone-300 bg-white px-2 py-1.5 text-sm">
+          {initial.type === 'items' && <option value="items">Bảng hạng mục hàng hóa (có sẵn)</option>}
           {Object.entries(FIELD_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
         <label className="flex items-center gap-1.5 whitespace-nowrap text-xs text-stone-500">
@@ -4245,6 +4503,7 @@ function FieldsManager({
   }
 
   const FIELD_TYPE_LABELS = { text: 'Văn bản ngắn', textarea: 'Văn bản dài', number: 'Số', date: 'Ngày', select: 'Lựa chọn (dropdown)', table: 'Bảng dữ liệu (nhiều dòng)' };
+  const FIELD_TYPE_DISPLAY = { ...FIELD_TYPE_LABELS, items: 'Bảng hạng mục hàng hóa' };
 
   // Lọc theo cấp độ đang chọn: mẫu chung, hoặc mẫu riêng cho 1 loại dự án cụ thể
   const genericHiddenNames = new Set(hiddenFieldRows.filter((h) => h.project_type_id === GENERIC_TYPE_ID).map((h) => h.field_name));
@@ -4265,7 +4524,9 @@ function FieldsManager({
 
   const genericCustom = mode === 'replace' ? [] : customFields.filter((f) => f.project_type_id === GENERIC_TYPE_ID);
   const specificCustom = !isGeneric ? customFields.filter((f) => f.project_type_id === projectTypeId) : [];
-  const sortedCustom = [...specificCustom].sort((a, b) => a.sort_order - b.sort_order);
+  // Hiển thị ĐẦY ĐỦ trường tùy chỉnh của cấp đang chọn: mẫu chung -> các trường chung; mẫu riêng -> các trường riêng của loại dự án đó
+  const ownCustom = isGeneric ? customFields.filter((f) => f.project_type_id === GENERIC_TYPE_ID) : specificCustom;
+  const sortedCustom = [...ownCustom].sort((a, b) => a.sort_order - b.sort_order);
 
   return (
     <div className="grid grid-cols-2 gap-5">
@@ -4290,7 +4551,7 @@ function FieldsManager({
                   <div className={`flex items-center justify-between text-sm ${isHidden ? 'text-stone-400' : 'text-stone-700'}`}>
                     <span className={isHidden ? 'line-through' : ''}>{f.label} {f.required && <span className="text-rose-500">*</span>}</span>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-stone-400">{FIELD_TYPE_LABELS[f.type] || f.type}</span>
+                      <span className="text-xs text-stone-400">{FIELD_TYPE_DISPLAY[f.type] || f.type}</span>
                       <button onClick={() => setEditingBuiltin(f.name)} className="rounded p-1 text-stone-400 hover:bg-stone-100 hover:text-teal-800">
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
@@ -4323,7 +4584,12 @@ function FieldsManager({
 
         {!isGeneric && genericCustom.length > 0 && (
           <div className="mt-2 rounded-md bg-stone-50 p-2 text-xs text-stone-500">
-            Ngoài ra, các trường chung sau cũng tự động áp dụng: {genericCustom.map((f) => f.label).join(', ')}
+            Các trường chung sau cũng tự động áp dụng (muốn sửa, chuyển sang "Áp dụng cho tất cả loại dự án"):
+            <ul className="mt-1 list-disc pl-4">
+              {[...genericCustom].sort((a, b) => a.sort_order - b.sort_order).map((f) => (
+                <li key={f.id}>{f.label} <span className="text-stone-400">({FIELD_TYPE_DISPLAY[f.field_type] || f.field_type})</span></li>
+              ))}
+            </ul>
           </div>
         )}
 
@@ -4343,7 +4609,7 @@ function FieldsManager({
                   <div className="flex items-center justify-between">
                     <div className="text-sm text-stone-700">
                       {f.label} {f.required && <span className="text-rose-500">*</span>}
-                      <span className="ml-1 text-xs text-stone-400">({FIELD_TYPE_LABELS[f.field_type]})</span>
+                      <span className="ml-1 text-xs text-stone-400">({FIELD_TYPE_DISPLAY[f.field_type] || f.field_type})</span>
                     </div>
                     <div className="flex items-center gap-1">
                       <button onClick={() => setEditingCustomId(f.id)} className="rounded p-1 text-stone-400 hover:bg-stone-100 hover:text-teal-800">
