@@ -156,6 +156,49 @@ const ITEMS_COLUMNS = [
 // Schema giả cho "Gói thầu" — tương tự, chỉ chứa trường tùy chỉnh
 const GOI_THAU_BASE_SCHEMA = { key: 'goi_thau', label: 'Gói thầu (thông tin riêng)', fields: [] };
 
+/* ---------------- Mẫu email thông báo (admin chỉnh được) ---------------- */
+const EMAIL_TEMPLATE_TYPES = [
+  {
+    key: 'assignment_created',
+    label: 'Bước 1 — Giao việc điền thông tin (gửi người được giao)',
+    defaultSubject: 'Bạn được giao điền thông tin: {ten_ho_so}',
+    defaultBody: '<p>{nguoi_giao} đã giao cho bạn điền một phần thông tin trong hồ sơ "<b>{ten_ho_so}</b>".</p>\n<p><a href="{link}">Bấm vào đây để điền thông tin</a></p>',
+    placeholders: [['{nguoi_giao}', 'Tên người giao việc'], ['{ten_ho_so}', 'Tên hồ sơ'], ['{link}', 'Đường dẫn mở thẳng màn hình điền thông tin']],
+    sample: { nguoi_giao: 'Nguyễn Văn A', ten_ho_so: 'Gói thầu mua sắm thiết bị', link: 'https://dauthau.app/?assignment=demo' },
+  },
+  {
+    key: 'assignment_submitted',
+    label: 'Bước 2 — Người nhận điền xong, gửi lãnh đạo đơn vị xác nhận',
+    defaultSubject: '{nguoi_dien} đã điền xong, đề nghị bạn xác nhận: {ten_ho_so}',
+    defaultBody: '<p>{nguoi_dien} đã điền xong phần thông tin được {nguoi_giao} giao trong hồ sơ "<b>{ten_ho_so}</b>" và gửi bạn xác nhận.</p>\n<p><a href="{link}">Bấm vào đây để xem và xác nhận</a></p>',
+    placeholders: [['{nguoi_dien}', 'Tên người đã điền thông tin'], ['{nguoi_giao}', 'Tên người giao việc ban đầu'], ['{ten_ho_so}', 'Tên hồ sơ'], ['{link}', 'Đường dẫn mở thẳng màn hình xác nhận']],
+    sample: { nguoi_dien: 'Trần Thị B', nguoi_giao: 'Nguyễn Văn A', ten_ho_so: 'Gói thầu mua sắm thiết bị', link: 'https://dauthau.app/?assignment=demo' },
+  },
+  {
+    key: 'assignment_approved',
+    label: 'Bước 3 — Lãnh đạo đã xác nhận, gửi lại người giao việc',
+    defaultSubject: '{nguoi_duyet} đã xác nhận phần điền thông tin: {ten_ho_so}',
+    defaultBody: '<p>{nguoi_duyet} đã xác nhận phần thông tin do {nguoi_dien} điền trong hồ sơ "<b>{ten_ho_so}</b>". Hồ sơ đã sẵn sàng để bạn kiểm tra và hoàn thiện.</p>',
+    placeholders: [['{nguoi_duyet}', 'Tên lãnh đạo xác nhận'], ['{nguoi_dien}', 'Tên người đã điền thông tin'], ['{ten_ho_so}', 'Tên hồ sơ']],
+    sample: { nguoi_duyet: 'Lê Văn C', nguoi_dien: 'Trần Thị B', ten_ho_so: 'Gói thầu mua sắm thiết bị' },
+  },
+];
+function escapeHtml(v) {
+  return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+// Thay {placeholder} trong tiêu đề/nội dung; dữ liệu người dùng được escape khi chèn vào nội dung HTML (riêng link giữ nguyên vì do hệ thống tạo)
+function renderEmailTemplate(templates, typeKey, vars) {
+  const def = EMAIL_TEMPLATE_TYPES.find((t) => t.key === typeKey);
+  const saved = (templates && templates[typeKey]) || {};
+  let subject = saved.subject || def.defaultSubject;
+  let html = saved.body || def.defaultBody;
+  Object.keys(vars).forEach((k) => {
+    subject = subject.split(`{${k}}`).join(String(vars[k] ?? ''));
+    html = html.split(`{${k}}`).join(k === 'link' ? String(vars[k] ?? '') : escapeHtml(vars[k]));
+  });
+  return { subject, html };
+}
+
 /* ---------------- helper: điền dữ liệu vào mẫu Excel (.xlsx) đã tải lên ---------------- */
 // Thay các ô chứa đúng {ten_truong}, hoặc {ten_truong} nằm chung ô với văn bản khác, bằng dữ liệu thật.
 function fillExcelScalarPlaceholders(ws, mergeData) {
@@ -570,12 +613,13 @@ function RoleBadge({ role }) {
   );
 }
 
-function Toast({ message, tone }) {
+function Toast({ message, tone, onClose }) {
   if (!message) return null;
   const toneClass = tone === 'error' ? 'bg-rose-800 text-rose-50' : 'bg-teal-900 text-teal-50';
   return (
-    <div className={`fixed bottom-5 right-5 z-50 rounded-md px-4 py-2.5 text-sm shadow-lg print:hidden ${toneClass}`}>
-      {message}
+    <div className={`fixed bottom-5 right-5 z-50 flex max-w-md items-start gap-3 rounded-md px-4 py-2.5 text-sm shadow-lg print:hidden ${toneClass}`}>
+      <span className="flex-1">{message}</span>
+      {onClose && <button onClick={onClose} className="shrink-0 opacity-70 hover:opacity-100" aria-label="Đóng"><X className="h-4 w-4" /></button>}
     </div>
   );
 }
@@ -720,6 +764,8 @@ export default function App() {
   const [templateFieldMode, setTemplateFieldModeState] = useState({}); // { [docType]: { [projectTypeId]: 'extend' | 'replace' } }
   const [printTemplates, setPrintTemplates] = useState({}); // { [docType]: { layout: [...] } }
   const [docxTemplates, setDocxTemplates] = useState({}); // { [docType]: { storage_path } }
+  const [units, setUnits] = useState([]); // [{ id, ten, leader_id }]
+  const [emailTemplates, setEmailTemplates] = useState({}); // { [templateKey]: { subject, body } }
   const [excelTemplates, setExcelTemplates] = useState({}); // { [docType]: { [projectTypeId]: { storage_path } } }
   const [myAssignments, setMyAssignments] = useState([]); // giao việc điền thông tin (của tôi hoặc do tôi giao)
   const [deepLinkAssignmentId, setDeepLinkAssignmentId] = useState(null);
@@ -741,9 +787,12 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const [assigningRecord, setAssigningRecord] = useState(null); // { docType, record } khi đang mở modal giao việc
 
+  const toastTimer = useRef(null);
   const showToast = useCallback((message, tone = 'ok') => {
     setToast({ message, tone });
-    setTimeout(() => setToast(null), 2600);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    // thông báo lỗi giữ 15 giây (có nút đóng) để kịp đọc; thông báo thành công tự tắt sau ~2.6 giây
+    toastTimer.current = setTimeout(() => setToast(null), tone === 'error' ? 15000 : 2600);
   }, []);
 
   /* ---------------- auth session ---------------- */
@@ -778,9 +827,9 @@ export default function App() {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      const [profileRes, profilesRes, projectsRes, permsRes, typesRes, auditRes, templatesRes, customFieldsRes, printTemplatesRes, hiddenFieldsRes, fieldOverridesRes, docxTemplatesRes, excelTemplatesRes, assignmentsRes, projectStepsRes, goiThauRes, templateModeRes] = await Promise.all([
-        supabase.from('profiles').select('id, full_name, is_admin').eq('id', session.user.id).single(),
-        supabase.from('profiles').select('id, full_name, is_admin').order('full_name'),
+      const [profileRes, profilesRes, projectsRes, permsRes, typesRes, auditRes, templatesRes, customFieldsRes, printTemplatesRes, hiddenFieldsRes, fieldOverridesRes, docxTemplatesRes, excelTemplatesRes, assignmentsRes, projectStepsRes, goiThauRes, templateModeRes, appSettingsRes, unitsRes] = await Promise.all([
+        supabase.from('profiles').select('id, full_name, is_admin, unit_id').eq('id', session.user.id).single(),
+        supabase.from('profiles').select('id, full_name, is_admin, unit_id').order('full_name'),
         supabase.from('projects').select('id, ten, ma_du_an, mo_ta, type_id, data, created_at').order('created_at'),
         supabase.from('project_permissions').select('project_id, user_id, doc_type, can_view, can_add, can_edit, can_lock, can_delete'),
         supabase.from('project_types').select('id, ten').order('ten'),
@@ -792,10 +841,12 @@ export default function App() {
         supabase.from('field_overrides').select('doc_type, field_name, label, field_type, required, options, project_type_id'),
         supabase.from('docx_templates').select('doc_type, project_type_id, storage_path'),
         supabase.from('excel_templates').select('doc_type, project_type_id, storage_path'),
-        supabase.from('document_assignments').select('id, document_id, doc_type, assigned_to, assigned_by, field_keys, status, created_at, completed_at'),
+        supabase.from('document_assignments').select('id, document_id, doc_type, assigned_to, assigned_by, field_keys, status, created_at, completed_at, reviewer_id, submitted_at'),
         supabase.from('project_document_types').select('id, project_id, doc_type, sort_order, completed'),
         supabase.from('goi_thau').select('id, project_id, ma_goi_thau, ten_goi_thau, data, created_at'),
         supabase.from('template_field_mode').select('doc_type, project_type_id, mode'),
+        supabase.from('app_settings').select('key, value').eq('key', 'email_templates'),
+        supabase.from('units').select('id, ten, leader_id').order('ten'),
       ]);
 
       const nextRecords = {};
@@ -874,9 +925,12 @@ export default function App() {
         etByType[t.doc_type][t.project_type_id] = { storage_path: t.storage_path };
       });
       setExcelTemplates(etByType);
+      setEmailTemplates((appSettingsRes.data && appSettingsRes.data[0] && appSettingsRes.data[0].value) || {});
+      setUnits(unitsRes.data || []);
       setMyAssignments((assignmentsRes.data || []).map((a) => ({
         id: a.id, documentId: a.document_id, docType: a.doc_type, assignedTo: a.assigned_to, assignedBy: a.assigned_by,
         fieldKeys: a.field_keys, status: a.status, createdAt: a.created_at, completedAt: a.completed_at,
+        reviewerId: a.reviewer_id || null, submittedAt: a.submitted_at || null,
       })));
       setRecords(nextRecords);
       setLoading(false);
@@ -887,7 +941,7 @@ export default function App() {
   // Sau khi tải xong dữ liệu, nếu có link giao việc (?assignment=...), tự mở đúng màn hình điền
   useEffect(() => {
     if (!deepLinkAssignmentId || loading || !myProfile) return;
-    const assignment = myAssignments.find((a) => a.id === deepLinkAssignmentId && a.assignedTo === myProfile.id);
+    const assignment = myAssignments.find((a) => a.id === deepLinkAssignmentId && (a.assignedTo === myProfile.id || a.reviewerId === myProfile.id));
     if (assignment) {
       setActiveType(assignment.docType);
       setActiveAssignmentId(assignment.id);
@@ -1659,6 +1713,16 @@ export default function App() {
     }
   }
 
+  async function saveEmailTemplates(next) {
+    const { error } = await supabase
+      .from('app_settings')
+      .upsert({ key: 'email_templates', value: next, updated_by: myId, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    if (error) { showToast('Không thể lưu mẫu email: ' + error.message, 'error'); return false; }
+    setEmailTemplates(next);
+    showToast('Đã lưu mẫu email.');
+    return true;
+  }
+
   async function createAssignment(documentId, docType, assignedToUserId, fieldKeys, recordTitle) {
     const { data, error } = await supabase
       .from('document_assignments')
@@ -1669,15 +1733,14 @@ export default function App() {
     setMyAssignments((prev) => [...prev, {
       id: data.id, documentId: data.document_id, docType: data.doc_type, assignedTo: data.assigned_to, assignedBy: data.assigned_by,
       fieldKeys: data.field_keys, status: data.status, createdAt: data.created_at, completedAt: data.completed_at,
+      reviewerId: null, submittedAt: null,
     }]);
     const link = `${window.location.origin}${window.location.pathname}?assignment=${data.id}`;
-    await sendNotificationEmail(
-      assignedToUserId,
-      `Bạn được giao điền thông tin: ${recordTitle || DOC_TYPES[docType].label}`,
-      `<p>${myProfile.full_name} đã giao cho bạn điền một phần thông tin trong hồ sơ "<b>${recordTitle || DOC_TYPES[docType].label}</b>".</p>
-       <p><a href="${link}">Bấm vào đây để điền thông tin</a></p>`
-    );
-    showToast('Đã giao việc và gửi email thông báo.');
+    const mail = renderEmailTemplate(emailTemplates, 'assignment_created', {
+      nguoi_giao: myProfile.full_name, ten_ho_so: recordTitle || DOC_TYPES[docType].label, link,
+    });
+    const mailOk = await sendNotificationEmail(assignedToUserId, mail.subject, mail.html);
+    if (mailOk) showToast('Đã giao việc và gửi email thông báo.');
     appendLog('assign_field', `${myProfile.full_name} đã giao điền thông tin (${fieldKeys.length} trường) cho "${nameOf(assignedToUserId)}" trong hồ sơ "${recordTitle || ''}".`);
     return data.id;
   }
@@ -1696,17 +1759,80 @@ export default function App() {
     return true;
   }
 
+  // Người được giao bấm "Xác nhận": nếu đơn vị có lãnh đạo -> gửi lãnh đạo xác nhận (bước 2); nếu không có -> hoàn thành luôn và báo người giao (bước 3)
   async function completeAssignment(assignment, typeKey, recordTitle) {
+    const title = recordTitle || DOC_TYPES[typeKey].label;
+    const unit = units.find((u) => u.id === myProfile.unit_id);
+    const leaderId = unit && unit.leader_id && unit.leader_id !== myId ? unit.leader_id : null;
+    const link = `${window.location.origin}${window.location.pathname}?assignment=${assignment.id}`;
+
+    if (leaderId) {
+      const now = new Date().toISOString();
+      const { error } = await supabase.from('document_assignments')
+        .update({ status: 'submitted', reviewer_id: leaderId, submitted_at: now }).eq('id', assignment.id);
+      if (error) { showToast('Không thể gửi lãnh đạo xác nhận: ' + error.message, 'error'); return; }
+      setMyAssignments((prev) => prev.map((a) => (a.id === assignment.id ? { ...a, status: 'submitted', reviewerId: leaderId, submittedAt: now } : a)));
+      const mail = renderEmailTemplate(emailTemplates, 'assignment_submitted', {
+        nguoi_dien: myProfile.full_name, nguoi_giao: nameOf(assignment.assignedBy), ten_ho_so: title, link,
+      });
+      const ok = await sendNotificationEmail(leaderId, mail.subject, mail.html);
+      if (ok) showToast(`Đã gửi lãnh đạo đơn vị (${nameOf(leaderId)}) xác nhận.`);
+      appendLog('submit_assignment', `${myProfile.full_name} đã điền xong và gửi lãnh đạo "${nameOf(leaderId)}" xác nhận trong hồ sơ "${title}".`);
+      return;
+    }
+
     const { error } = await supabase.from('document_assignments').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', assignment.id);
     if (error) { showToast('Không thể xác nhận hoàn thành: ' + error.message, 'error'); return; }
     setMyAssignments((prev) => prev.map((a) => (a.id === assignment.id ? { ...a, status: 'completed', completedAt: new Date().toISOString() } : a)));
-    await sendNotificationEmail(
-      assignment.assignedBy,
-      `${myProfile.full_name} đã hoàn thành phần điền thông tin`,
-      `<p>${myProfile.full_name} đã điền xong phần được giao trong hồ sơ "<b>${recordTitle || DOC_TYPES[typeKey].label}</b>" và xác nhận gửi lại cho bạn.</p>`
-    );
-    showToast('Đã xác nhận hoàn thành và gửi lại cho người giao việc.');
-    appendLog('complete_assignment', `${myProfile.full_name} đã hoàn thành phần điền thông tin được giao trong hồ sơ "${recordTitle || ''}".`);
+    const mail = renderEmailTemplate(emailTemplates, 'assignment_approved', {
+      nguoi_duyet: myProfile.full_name, nguoi_dien: myProfile.full_name, ten_ho_so: title,
+    });
+    const ok = await sendNotificationEmail(assignment.assignedBy, mail.subject, mail.html);
+    if (ok) showToast('Đã xác nhận hoàn thành và gửi lại cho người giao việc.');
+    appendLog('complete_assignment', `${myProfile.full_name} đã hoàn thành phần điền thông tin được giao trong hồ sơ "${title}".`);
+  }
+
+  // Lãnh đạo đơn vị bấm "Xác nhận" (bước 3): hoàn thành và gửi email cho người giao việc
+  async function approveAssignment(assignment, typeKey, recordTitle) {
+    const title = recordTitle || DOC_TYPES[typeKey].label;
+    const now = new Date().toISOString();
+    const { error } = await supabase.from('document_assignments').update({ status: 'completed', completed_at: now }).eq('id', assignment.id);
+    if (error) { showToast('Không thể xác nhận: ' + error.message, 'error'); return; }
+    setMyAssignments((prev) => prev.map((a) => (a.id === assignment.id ? { ...a, status: 'completed', completedAt: now } : a)));
+    const mail = renderEmailTemplate(emailTemplates, 'assignment_approved', {
+      nguoi_duyet: myProfile.full_name, nguoi_dien: nameOf(assignment.assignedTo), ten_ho_so: title,
+    });
+    const ok = await sendNotificationEmail(assignment.assignedBy, mail.subject, mail.html);
+    if (ok) showToast('Đã xác nhận và gửi email cho người giao việc.');
+    appendLog('approve_assignment', `${myProfile.full_name} đã xác nhận phần điền thông tin của "${nameOf(assignment.assignedTo)}" trong hồ sơ "${title}".`);
+  }
+
+  /* ---------------- đơn vị & lãnh đạo (admin) ---------------- */
+  async function createUnit(ten) {
+    const { data, error } = await supabase.from('units').insert({ ten }).select().single();
+    if (error) { showToast('Không thể tạo đơn vị: ' + error.message, 'error'); return; }
+    setUnits((prev) => [...prev, data].sort((a, b) => a.ten.localeCompare(b.ten)));
+    showToast('Đã tạo đơn vị.');
+  }
+  async function setUnitLeader(unitId, leaderId) {
+    const { error } = await supabase.from('units').update({ leader_id: leaderId || null }).eq('id', unitId);
+    if (error) { showToast('Không thể đặt lãnh đạo: ' + error.message, 'error'); return; }
+    setUnits((prev) => prev.map((u) => (u.id === unitId ? { ...u, leader_id: leaderId || null } : u)));
+    showToast('Đã cập nhật lãnh đạo đơn vị.');
+  }
+  async function deleteUnit(unitId) {
+    const { error } = await supabase.from('units').delete().eq('id', unitId);
+    if (error) { showToast('Không thể xóa đơn vị: ' + error.message, 'error'); return; }
+    setUnits((prev) => prev.filter((u) => u.id !== unitId));
+    setProfiles((prev) => prev.map((p) => (p.unit_id === unitId ? { ...p, unit_id: null } : p)));
+    showToast('Đã xóa đơn vị.');
+  }
+  async function setUserUnit(userId, unitId) {
+    const { error } = await supabase.from('profiles').update({ unit_id: unitId || null }).eq('id', userId);
+    if (error) { showToast('Không thể gán đơn vị: ' + error.message, 'error'); return; }
+    setProfiles((prev) => prev.map((p) => (p.id === userId ? { ...p, unit_id: unitId || null } : p)));
+    if (userId === myId) setMyProfile((prev) => (prev ? { ...prev, unit_id: unitId || null } : prev));
+    showToast('Đã cập nhật đơn vị của người dùng.');
   }
 
   /* ---------------- project types (admin only) ---------------- */
@@ -1915,9 +2041,9 @@ export default function App() {
               <ClipboardCheck className="h-4 w-4" />
               Nhiệm vụ của tôi
             </span>
-            {myAssignments.filter((a) => a.assignedTo === myId && a.status === 'pending').length > 0 && (
+            {myAssignments.filter((a) => (a.assignedTo === myId && a.status === 'pending') || (a.reviewerId === myId && a.status === 'submitted')).length > 0 && (
               <span className="rounded-full bg-amber-500 px-1.5 text-xs text-white">
-                {myAssignments.filter((a) => a.assignedTo === myId && a.status === 'pending').length}
+                {myAssignments.filter((a) => (a.assignedTo === myId && a.status === 'pending') || (a.reviewerId === myId && a.status === 'submitted')).length}
               </span>
             )}
           </button>
@@ -1952,6 +2078,28 @@ export default function App() {
             >
               <Settings2 className="h-4 w-4" />
               Tùy chỉnh mẫu
+            </button>
+          )}
+          {amAdmin && (
+            <button
+              onClick={() => setView('units')}
+              className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
+                view === 'units' ? 'bg-teal-800/70 text-white' : 'text-teal-200 hover:bg-teal-900/60'
+              }`}
+            >
+              <Users className="h-4 w-4" />
+              Đơn vị &amp; lãnh đạo
+            </button>
+          )}
+          {amAdmin && (
+            <button
+              onClick={() => setView('email-templates')}
+              className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
+                view === 'email-templates' ? 'bg-teal-800/70 text-white' : 'text-teal-200 hover:bg-teal-900/60'
+              }`}
+            >
+              <Mail className="h-4 w-4" />
+              Mẫu email
             </button>
           )}
           {amAdmin && (
@@ -2049,7 +2197,8 @@ export default function App() {
 
         {view === 'my-assignments' && (
           <MyAssignmentsView
-            assignments={myAssignments.filter((a) => a.assignedTo === myId)}
+            assignments={myAssignments.filter((a) => a.assignedTo === myId || a.reviewerId === myId)}
+            myId={myId}
             records={records}
             nameOf={nameOf}
             onOpen={(assignment) => { setActiveType(assignment.docType); setActiveAssignmentId(assignment.id); setView('fill-assignment'); }}
@@ -2069,8 +2218,12 @@ export default function App() {
               record={rec}
               project={proj}
               assignment={assignment}
+              isReviewer={assignment.reviewerId === myId && assignment.assignedTo !== myId}
+              hasLeader={!!(units.find((u) => u.id === myProfile.unit_id)?.leader_id) && units.find((u) => u.id === myProfile.unit_id).leader_id !== myId}
+              assigneeName={nameOf(assignment.assignedTo)}
               onSaveDraft={(patch) => saveAssignmentDraft(assignment, assignment.docType, patch)}
               onComplete={() => completeAssignment(assignment, assignment.docType, rec.tenGoiThau || rec.soHopDong || rec.maGoiThau)}
+              onApprove={() => approveAssignment(assignment, assignment.docType, rec.tenGoiThau || rec.soHopDong || rec.maGoiThau)}
               onBack={() => setView('my-assignments')}
             />
           );
@@ -2229,10 +2382,18 @@ export default function App() {
           />
         )}
 
+        {view === 'units' && amAdmin && (
+          <UnitsView units={units} profiles={profiles} onCreateUnit={createUnit} onSetLeader={setUnitLeader} onDeleteUnit={deleteUnit} onSetUserUnit={setUserUnit} />
+        )}
+
+        {view === 'email-templates' && amAdmin && (
+          <EmailTemplatesEditor templates={emailTemplates} onSave={saveEmailTemplates} />
+        )}
+
         {view === 'log' && amAdmin && <AuditLog entries={auditLog} />}
       </main>
 
-      <Toast message={toast?.message} tone={toast?.tone} />
+      <Toast message={toast?.message} tone={toast?.tone} onClose={() => setToast(null)} />
     </div>
   );
 }
@@ -4292,6 +4453,175 @@ function DocxTemplateManager({ docType, schema, existing, onUpload }) {
   );
 }
 
+/* ---------------- Đơn vị & lãnh đạo ---------------- */
+
+function UnitsView({ units, profiles, onCreateUnit, onSetLeader, onDeleteUnit, onSetUserUnit }) {
+  const [name, setName] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(null);
+
+  async function handleAdd(e) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    await onCreateUnit(name.trim());
+    setName('');
+  }
+  function handleDelete(id) {
+    if (confirmDelete !== id) {
+      setConfirmDelete(id);
+      setTimeout(() => setConfirmDelete((c) => (c === id ? null : c)), 3000);
+      return;
+    }
+    onDeleteUnit(id);
+    setConfirmDelete(null);
+  }
+
+  return (
+    <div className="mx-auto max-w-4xl px-8 py-8">
+      <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-xl text-stone-900">Đơn vị &amp; lãnh đạo</div>
+      <p className="mt-1 text-sm text-stone-500">
+        Khi người được giao việc điền xong, email xác nhận sẽ gửi đến lãnh đạo đơn vị của họ; lãnh đạo xác nhận xong thì email gửi lại cho người giao việc.
+        Người dùng chưa thuộc đơn vị nào (hoặc đơn vị chưa có lãnh đạo) sẽ hoàn thành và gửi thẳng cho người giao việc.
+      </p>
+
+      <div className="mt-5 grid grid-cols-2 gap-5">
+        <div className="rounded-lg border border-stone-200 bg-white p-5">
+          <div className="text-sm font-medium text-stone-700">Danh sách đơn vị</div>
+          <div className="mt-2 divide-y divide-stone-100">
+            {units.length === 0 && <div className="py-2 text-xs text-stone-400">Chưa có đơn vị nào.</div>}
+            {units.map((u) => (
+              <div key={u.id} className="py-2">
+                <div className="flex items-center justify-between text-sm text-stone-800">
+                  <span className="font-medium">{u.ten}</span>
+                  <button onClick={() => handleDelete(u.id)}
+                    className={`rounded p-1 hover:bg-rose-50 ${confirmDelete === u.id ? 'text-rose-700' : 'text-stone-400 hover:text-rose-700'}`}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <div className="mt-1 flex items-center gap-2">
+                  <span className="text-xs text-stone-500">Lãnh đạo:</span>
+                  <select value={u.leader_id || ''} onChange={(e) => onSetLeader(u.id, e.target.value)}
+                    className="flex-1 rounded-md border border-stone-300 bg-white px-2 py-1 text-xs">
+                    <option value="">— chưa có —</option>
+                    {profiles.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+                  </select>
+                </div>
+              </div>
+            ))}
+          </div>
+          <form onSubmit={handleAdd} className="mt-3 flex gap-2 border-t border-stone-100 pt-3">
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Tên đơn vị mới, ví dụ: Phòng Kế hoạch"
+              className="flex-1 rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
+            <button type="submit" className="flex items-center gap-1 rounded-md bg-teal-900 px-3 py-1.5 text-sm text-white hover:bg-teal-800">
+              <Plus className="h-4 w-4" /> Thêm
+            </button>
+          </form>
+        </div>
+
+        <div className="rounded-lg border border-stone-200 bg-white p-5">
+          <div className="text-sm font-medium text-stone-700">Người dùng thuộc đơn vị nào</div>
+          <div className="mt-2 max-h-[28rem] divide-y divide-stone-100 overflow-y-auto">
+            {profiles.map((p) => (
+              <div key={p.id} className="flex items-center justify-between gap-2 py-1.5 text-sm">
+                <span className="text-stone-700">{p.full_name}</span>
+                <select value={p.unit_id || ''} onChange={(e) => onSetUserUnit(p.id, e.target.value)}
+                  className="w-44 rounded-md border border-stone-300 bg-white px-2 py-1 text-xs">
+                  <option value="">— chưa thuộc đơn vị —</option>
+                  {units.map((u) => <option key={u.id} value={u.id}>{u.ten}</option>)}
+                </select>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Cấu hình mẫu email thông báo ---------------- */
+
+function EmailTemplatesEditor({ templates, onSave }) {
+  const [typeKey, setTypeKey] = useState(EMAIL_TEMPLATE_TYPES[0].key);
+  const def = EMAIL_TEMPLATE_TYPES.find((t) => t.key === typeKey);
+  const saved = templates[typeKey] || {};
+  const [subject, setSubject] = useState(saved.subject || def.defaultSubject);
+  const [body, setBody] = useState(saved.body || def.defaultBody);
+  const [saving, setSaving] = useState(false);
+
+  function switchType(k) {
+    const d = EMAIL_TEMPLATE_TYPES.find((t) => t.key === k);
+    const sv = templates[k] || {};
+    setTypeKey(k);
+    setSubject(sv.subject || d.defaultSubject);
+    setBody(sv.body || d.defaultBody);
+  }
+  async function handleSave() {
+    setSaving(true);
+    await onSave({ ...templates, [typeKey]: { subject, body } });
+    setSaving(false);
+  }
+  async function handleReset() {
+    const next = { ...templates };
+    delete next[typeKey];
+    setSubject(def.defaultSubject);
+    setBody(def.defaultBody);
+    setSaving(true);
+    await onSave(next);
+    setSaving(false);
+  }
+
+  const preview = renderEmailTemplate({ [typeKey]: { subject, body } }, typeKey, def.sample);
+
+  return (
+    <div className="mx-auto max-w-5xl px-8 py-8">
+      <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-xl text-stone-900">Mẫu email thông báo</div>
+      <p className="mt-1 text-sm text-stone-500">Chỉnh tiêu đề và nội dung email gửi tự động cho từng loại thông báo. Dùng các thẻ trong ngoặc nhọn để chèn dữ liệu thật.</p>
+
+      <select value={typeKey} onChange={(e) => switchType(e.target.value)}
+        className="mt-4 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm">
+        {EMAIL_TEMPLATE_TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+      </select>
+
+      <div className="mt-4 grid grid-cols-2 gap-5">
+        <div className="rounded-lg border border-stone-200 bg-white p-5">
+          <label className="text-xs font-medium text-stone-600">Tiêu đề email</label>
+          <input value={subject} onChange={(e) => setSubject(e.target.value)}
+            className="mt-1 w-full rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
+          <label className="mt-3 block text-xs font-medium text-stone-600">Nội dung (HTML)</label>
+          <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={9}
+            className="mt-1 w-full rounded-md border border-stone-300 px-3 py-2 font-mono text-xs" />
+          <div className="mt-2 text-xs text-stone-500">
+            Thẻ có thể dùng:
+            <ul className="mt-1 space-y-0.5">
+              {def.placeholders.map(([tag, desc]) => (
+                <li key={tag}><span className="rounded bg-stone-100 px-1.5 py-0.5 font-mono text-stone-700">{tag}</span> — {desc}</li>
+              ))}
+            </ul>
+          </div>
+          <div className="mt-4 flex gap-2">
+            <button onClick={handleSave} disabled={saving}
+              className="flex items-center gap-1.5 rounded-md bg-teal-900 px-4 py-2 text-sm text-white hover:bg-teal-800 disabled:opacity-60">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Lưu mẫu này
+            </button>
+            <button onClick={handleReset} disabled={saving}
+              className="rounded-md border border-stone-300 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-60">
+              Khôi phục mặc định
+            </button>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-stone-200 bg-white p-5">
+          <div className="text-xs font-medium text-stone-600">Xem trước (dữ liệu mẫu)</div>
+          <div className="mt-2 rounded-md bg-stone-50 p-3 text-sm">
+            <div className="text-xs text-stone-400">Tiêu đề</div>
+            <div className="font-medium text-stone-800">{preview.subject}</div>
+            <div className="mt-3 border-t border-stone-200 pt-3 text-stone-700" dangerouslySetInnerHTML={{ __html: preview.html }} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------------- Quản lý mẫu file Excel ---------------- */
 
 function ExcelTemplateManager({ docType, schema, existing, onUpload }) {
@@ -4949,8 +5279,10 @@ function AssignFieldsModal({ schema, profiles, onClose, onAssign }) {
 /* Danh sách nhiệm vụ của tôi                                           */
 /* ------------------------------------------------------------------ */
 
-function MyAssignmentsView({ assignments, records, nameOf, onOpen }) {
-  const pending = assignments.filter((a) => a.status === 'pending');
+function MyAssignmentsView({ assignments, myId, records, nameOf, onOpen }) {
+  const needsFill = assignments.filter((a) => a.assignedTo === myId && a.status === 'pending');
+  const needsMyReview = assignments.filter((a) => a.reviewerId === myId && a.assignedTo !== myId && a.status === 'submitted');
+  const waitingOnLeader = assignments.filter((a) => a.assignedTo === myId && a.status === 'submitted');
   const completed = assignments.filter((a) => a.status === 'completed');
 
   function titleOf(a) {
@@ -4958,42 +5290,44 @@ function MyAssignmentsView({ assignments, records, nameOf, onOpen }) {
     return rec ? (rec.tenGoiThau || rec.soHopDong || rec.maGoiThau || '(không có tiêu đề)') : '(hồ sơ đã bị xóa)';
   }
 
-  return (
-    <div className="mx-auto max-w-3xl px-8 py-8">
-      <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">Nhiệm vụ của tôi</div>
-      <p className="mt-1 text-sm text-stone-500">Những phần thông tin bạn được giao điền vào hồ sơ.</p>
-
-      <div className="mt-5">
-        <div className="text-xs font-medium uppercase tracking-wide text-stone-400">Đang chờ điền</div>
+  function Section({ title, items, badge, badgeClass, empty, clickable = true, sub }) {
+    return (
+      <div className="mt-6 first:mt-5">
+        <div className="text-xs font-medium uppercase tracking-wide text-stone-400">{title}</div>
         <div className="mt-2 divide-y divide-stone-200 rounded-lg border border-stone-200 bg-white">
-          {pending.length === 0 && <div className="px-4 py-6 text-center text-sm text-stone-400">Không có nhiệm vụ nào đang chờ.</div>}
-          {pending.map((a) => (
+          {items.length === 0 && <div className="px-4 py-6 text-center text-sm text-stone-400">{empty}</div>}
+          {items.map((a) => (
             <button key={a.id} onClick={() => onOpen(a)} className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-stone-50">
               <div>
                 <div className="text-sm font-medium text-stone-800">{titleOf(a)}</div>
-                <div className="text-xs text-stone-400">{DOC_TYPES[a.docType].label} · {a.fieldKeys.length} trường cần điền</div>
+                <div className="text-xs text-stone-400">{DOC_TYPES[a.docType].label} · {sub(a)}</div>
               </div>
-              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">Chờ điền</span>
+              <span className={`rounded-full px-2 py-0.5 text-xs ${badgeClass}`}>{badge}</span>
             </button>
           ))}
         </div>
       </div>
+    );
+  }
 
+  return (
+    <div className="mx-auto max-w-3xl px-8 py-8">
+      <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-xl text-stone-900">Nhiệm vụ của tôi</div>
+      <p className="mt-1 text-sm text-stone-500">Phần thông tin bạn được giao điền, và phần lãnh đạo đơn vị cần xác nhận.</p>
+
+      {needsMyReview.length > 0 && (
+        <Section title="Chờ tôi xác nhận (lãnh đạo)" items={needsMyReview} badge="Chờ xác nhận" badgeClass="bg-sky-100 text-sky-800"
+          empty="" sub={(a) => `${nameOf(a.assignedTo)} đã điền xong`} />
+      )}
+      <Section title="Đang chờ điền" items={needsFill} badge="Chờ điền" badgeClass="bg-amber-100 text-amber-800"
+        empty="Không có nhiệm vụ nào đang chờ." sub={(a) => `${a.fieldKeys.length} trường cần điền`} />
+      {waitingOnLeader.length > 0 && (
+        <Section title="Đã gửi lãnh đạo, chờ xác nhận" items={waitingOnLeader} badge="Chờ lãnh đạo" badgeClass="bg-violet-100 text-violet-800"
+          empty="" sub={(a) => `lãnh đạo: ${nameOf(a.reviewerId)}`} />
+      )}
       {completed.length > 0 && (
-        <div className="mt-6">
-          <div className="text-xs font-medium uppercase tracking-wide text-stone-400">Đã hoàn thành</div>
-          <div className="mt-2 divide-y divide-stone-200 rounded-lg border border-stone-200 bg-white">
-            {completed.map((a) => (
-              <div key={a.id} className="flex items-center justify-between px-4 py-3">
-                <div>
-                  <div className="text-sm text-stone-600">{titleOf(a)}</div>
-                  <div className="text-xs text-stone-400">{DOC_TYPES[a.docType].label}</div>
-                </div>
-                <span className="flex items-center gap-1 text-xs text-teal-700"><CheckCircle2 className="h-3.5 w-3.5" /> Đã gửi lại</span>
-              </div>
-            ))}
-          </div>
-        </div>
+        <Section title="Đã hoàn thành" items={completed} badge="Hoàn thành" badgeClass="bg-teal-100 text-teal-800"
+          empty="" sub={() => 'đã xác nhận'} />
       )}
     </div>
   );
@@ -5003,7 +5337,7 @@ function MyAssignmentsView({ assignments, records, nameOf, onOpen }) {
 /* Màn hình điền thông tin được giao + xem trước + xác nhận             */
 /* ------------------------------------------------------------------ */
 
-function AssignmentFillView({ schema, record, project, assignment, onSaveDraft, onComplete, onBack }) {
+function AssignmentFillView({ schema, record, project, assignment, isReviewer, hasLeader, assigneeName, onSaveDraft, onComplete, onApprove, onBack }) {
   const [values, setValues] = useState(() => {
     const init = {};
     assignment.fieldKeys.forEach((k) => {
@@ -5017,6 +5351,8 @@ function AssignmentFillView({ schema, record, project, assignment, onSaveDraft, 
   const [saving, setSaving] = useState(false);
   const [completing, setCompleting] = useState(false);
   const isDone = assignment.status === 'completed';
+  const isWaitingOnLeader = assignment.status === 'submitted' && !isReviewer;
+  const isReadOnly = isDone || isWaitingOnLeader || isReviewer;
 
   const fields = schema.fields.filter((f) => assignment.fieldKeys.includes(f.name));
 
@@ -5032,8 +5368,12 @@ function AssignmentFillView({ schema, record, project, assignment, onSaveDraft, 
 
   async function handleConfirm() {
     setCompleting(true);
-    const ok = await onSaveDraft(values);
-    if (ok !== false) await onComplete();
+    if (isReviewer) {
+      await onApprove();
+    } else {
+      const ok = await onSaveDraft(values);
+      if (ok !== false) await onComplete();
+    }
     setCompleting(false);
   }
 
@@ -5052,7 +5392,17 @@ function AssignmentFillView({ schema, record, project, assignment, onSaveDraft, 
 
       {isDone && (
         <div className="mt-3 flex items-center gap-2 rounded-md bg-teal-50 px-3 py-2 text-sm text-teal-800">
-          <CheckCircle2 className="h-4 w-4" /> Bạn đã xác nhận hoàn thành phần này.
+          <CheckCircle2 className="h-4 w-4" /> Phần này đã được xác nhận hoàn thành.
+        </div>
+      )}
+      {isWaitingOnLeader && (
+        <div className="mt-3 flex items-center gap-2 rounded-md bg-violet-50 px-3 py-2 text-sm text-violet-800">
+          <Send className="h-4 w-4" /> Bạn đã gửi lãnh đạo đơn vị xác nhận, đang chờ phản hồi.
+        </div>
+      )}
+      {isReviewer && !isDone && (
+        <div className="mt-3 flex items-center gap-2 rounded-md bg-sky-50 px-3 py-2 text-sm text-sky-800">
+          <ClipboardCheck className="h-4 w-4" /> {assigneeName} đã điền xong phần này. Xem lại thông tin rồi bấm "Xem trước" để xác nhận.
         </div>
       )}
 
@@ -5065,18 +5415,18 @@ function AssignmentFillView({ schema, record, project, assignment, onSaveDraft, 
                   {f.label}{f.required && <span className="text-rose-600"> *</span>}
                 </label>
                 {f.type === 'items' ? (
-                  <ItemsEditor rows={values[f.name]} onChange={(rows) => updateValue(f.name, rows)} />
+                  <div className={isReadOnly ? 'pointer-events-none opacity-70' : ''}><ItemsEditor rows={values[f.name]} onChange={(rows) => updateValue(f.name, rows)} /></div>
                 ) : f.type === 'table' ? (
-                  <TableFieldEditor columns={f.options} rows={values[f.name]} onChange={(rows) => updateValue(f.name, rows)} />
+                  <div className={isReadOnly ? 'pointer-events-none opacity-70' : ''}><TableFieldEditor columns={f.options} rows={values[f.name]} onChange={(rows) => updateValue(f.name, rows)} /></div>
                 ) : (
-                  <Field field={f} value={values[f.name] ?? ''} onChange={(v) => updateValue(f.name, v)} disabled={isDone} />
+                  <Field field={f} value={values[f.name] ?? ''} onChange={(v) => updateValue(f.name, v)} disabled={isReadOnly} />
                 )}
               </div>
             ))}
           </div>
 
           <div className="mt-6 flex items-center justify-end gap-2 border-t border-stone-200 pt-5">
-            {!isDone && (
+            {!isReadOnly && (
               <button onClick={handleSaveDraft} disabled={saving}
                 className="flex items-center gap-1.5 rounded-md border border-stone-300 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-60">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -5104,7 +5454,7 @@ function AssignmentFillView({ schema, record, project, assignment, onSaveDraft, 
             onToggleLock={() => {}}
             confirmingDelete={false}
           />
-          {!isDone && (
+          {!isDone && !isWaitingOnLeader && (
             <div className="mx-auto mt-4 flex max-w-3xl justify-end gap-2 px-8 print:hidden">
               <button onClick={() => setShowPreview(false)} className="rounded-md border border-stone-300 px-4 py-2 text-sm text-stone-600 hover:bg-stone-50">
                 Quay lại chỉnh sửa
@@ -5112,7 +5462,7 @@ function AssignmentFillView({ schema, record, project, assignment, onSaveDraft, 
               <button onClick={handleConfirm} disabled={completing}
                 className="flex items-center gap-1.5 rounded-md bg-teal-900 px-4 py-2 text-sm text-white hover:bg-teal-800 disabled:opacity-60">
                 {completing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                Xác nhận hoàn thành &amp; gửi lại
+                {isReviewer ? 'Xác nhận & gửi lại người giao việc' : hasLeader ? 'Xác nhận & gửi lãnh đạo đơn vị' : 'Xác nhận hoàn thành & gửi lại'}
               </button>
             </div>
           )}
