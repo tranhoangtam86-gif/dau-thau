@@ -4,11 +4,13 @@ import {
   Printer, Pencil, Plus, X, ChevronLeft, LayoutDashboard, Loader2,
   Save, Inbox, FolderKanban, Shield, UserPlus, EyeOff, Eye, Users, History,
   UserCog, Mail, Lock, Unlock, LogIn, LogOut, AlertCircle, Upload, CheckCircle2, XCircle,
-  Tags, Download, FileSpreadsheet, Settings2, Send, ClipboardCheck, FileType2, Palette,
+  Tags, Download, FileSpreadsheet, Settings2, Send, ClipboardCheck, FileType2,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 import { supabase } from './supabaseClient';
 
 /* ------------------------------------------------------------------ */
@@ -24,11 +26,23 @@ const DOC_TYPES = {
     docTitle: 'PHIẾU THU THẬP BÁO GIÁ',
     signLeft: 'Người thu thập',
     signRight: 'Người kiểm tra',
-    dateField: null,
-    fields: [],
+    dateField: 'ngayBaoGia',
+    fields: [
+      { name: 'maGoiThau', label: 'Mã gói thầu', type: 'text', required: true },
+      { name: 'tenGoiThau', label: 'Tên gói thầu', type: 'text', required: true, wide: true },
+      { name: 'tenDonVi', label: 'Tên đơn vị báo giá', type: 'text', required: true },
+      { name: 'maSoThue', label: 'Mã số thuế', type: 'text' },
+      { name: 'diaChi', label: 'Địa chỉ', type: 'text', wide: true },
+      { name: 'ngayBaoGia', label: 'Ngày báo giá', type: 'date' },
+      { name: 'nguoiThuThap', label: 'Người thu thập', type: 'text' },
+      { name: 'hangMuc', label: 'Hạng mục hàng hóa / dịch vụ', type: 'items', wide: true },
+      { name: 'ghiChu', label: 'Ghi chú', type: 'textarea', wide: true },
+    ],
     listColumns: [
       { key: 'maGoiThau', label: 'Mã gói thầu' },
       { key: 'tenGoiThau', label: 'Tên gói thầu' },
+      { key: 'tenDonVi', label: 'Đơn vị báo giá' },
+      { key: 'ngayBaoGia', label: 'Ngày báo giá', date: true },
     ],
   },
   ho_so_yeu_cau: {
@@ -39,11 +53,27 @@ const DOC_TYPES = {
     docTitle: 'HỒ SƠ YÊU CẦU CHỈ ĐỊNH THẦU',
     signLeft: 'Người lập',
     signRight: 'Người phê duyệt',
-    dateField: null,
-    fields: [],
+    dateField: 'ngayPhatHanh',
+    fields: [
+      { name: 'maGoiThau', label: 'Mã gói thầu', type: 'text', required: true },
+      { name: 'tenGoiThau', label: 'Tên gói thầu', type: 'text', required: true, wide: true },
+      { name: 'chuDauTu', label: 'Chủ đầu tư', type: 'text', wide: true },
+      { name: 'giaGoiThau', label: 'Giá gói thầu (VNĐ)', type: 'number' },
+      { name: 'hinhThuc', label: 'Hình thức chỉ định thầu', type: 'select',
+        options: ['Chỉ định thầu rút gọn', 'Chỉ định thầu thông thường'] },
+      { name: 'thoiGianThucHien', label: 'Thời gian thực hiện', type: 'text' },
+      { name: 'ngayPhatHanh', label: 'Ngày phát hành', type: 'date' },
+      { name: 'ngayDongThau', label: 'Ngày đóng thầu', type: 'date' },
+      { name: 'tieuChuanNangLuc', label: 'Tiêu chuẩn đánh giá năng lực, kinh nghiệm', type: 'textarea', wide: true },
+      { name: 'tieuChuanKyThuat', label: 'Tiêu chuẩn đánh giá kỹ thuật', type: 'textarea', wide: true },
+      { name: 'dieuKienHopDong', label: 'Điều kiện về hợp đồng', type: 'textarea', wide: true },
+      { name: 'nguoiLap', label: 'Người lập', type: 'text' },
+    ],
     listColumns: [
       { key: 'maGoiThau', label: 'Mã gói thầu' },
       { key: 'tenGoiThau', label: 'Tên gói thầu' },
+      { key: 'hinhThuc', label: 'Hình thức' },
+      { key: 'ngayPhatHanh', label: 'Ngày phát hành', date: true },
     ],
   },
   bien_ban: {
@@ -54,11 +84,25 @@ const DOC_TYPES = {
     docTitle: 'BIÊN BẢN THƯƠNG THẢO HỢP ĐỒNG',
     signLeft: 'Đại diện chủ đầu tư',
     signRight: 'Đại diện nhà thầu',
-    dateField: null,
-    fields: [],
+    dateField: 'ngayThuongThao',
+    fields: [
+      { name: 'maGoiThau', label: 'Mã gói thầu', type: 'text', required: true },
+      { name: 'tenGoiThau', label: 'Tên gói thầu', type: 'text', required: true, wide: true },
+      { name: 'tenNhaThau', label: 'Tên nhà thầu', type: 'text', wide: true },
+      { name: 'ngayThuongThao', label: 'Ngày thương thảo', type: 'date' },
+      { name: 'diaDiem', label: 'Địa điểm', type: 'text' },
+      { name: 'daiDienChuDauTu', label: 'Đại diện chủ đầu tư', type: 'text' },
+      { name: 'daiDienNhaThau', label: 'Đại diện nhà thầu', type: 'text' },
+      { name: 'giaTruocThuongThao', label: 'Giá trước thương thảo (VNĐ)', type: 'number' },
+      { name: 'giaSauThuongThao', label: 'Giá sau thương thảo (VNĐ)', type: 'number' },
+      { name: 'noiDungThuongThao', label: 'Nội dung thương thảo', type: 'textarea', wide: true },
+      { name: 'ketLuan', label: 'Kết luận', type: 'textarea', wide: true },
+    ],
     listColumns: [
       { key: 'maGoiThau', label: 'Mã gói thầu' },
-      { key: 'tenGoiThau', label: 'Tên gói thầu' },
+      { key: 'tenNhaThau', label: 'Nhà thầu' },
+      { key: 'ngayThuongThao', label: 'Ngày thương thảo', date: true },
+      { key: 'giaSauThuongThao', label: 'Giá sau TT', money: true },
     ],
   },
   hop_dong: {
@@ -69,11 +113,29 @@ const DOC_TYPES = {
     docTitle: 'HỢP ĐỒNG',
     signLeft: 'Đại diện Bên A',
     signRight: 'Đại diện Bên B',
-    dateField: null,
-    fields: [],
+    dateField: 'ngayKy',
+    fields: [
+      { name: 'soHopDong', label: 'Số hợp đồng', type: 'text', required: true },
+      { name: 'tenGoiThau', label: 'Tên gói thầu', type: 'text', required: true, wide: true },
+      { name: 'benA_TenDonVi', label: 'Bên A – Tên đơn vị', type: 'text', wide: true },
+      { name: 'benA_DaiDien', label: 'Bên A – Người đại diện', type: 'text' },
+      { name: 'benA_ChucVu', label: 'Bên A – Chức vụ', type: 'text' },
+      { name: 'benB_TenDonVi', label: 'Bên B – Tên đơn vị', type: 'text', wide: true },
+      { name: 'benB_DaiDien', label: 'Bên B – Người đại diện', type: 'text' },
+      { name: 'benB_ChucVu', label: 'Bên B – Chức vụ', type: 'text' },
+      { name: 'benB_MaSoThue', label: 'Bên B – Mã số thuế', type: 'text' },
+      { name: 'giaTriHopDong', label: 'Giá trị hợp đồng (VNĐ)', type: 'number' },
+      { name: 'hinhThucHopDong', label: 'Hình thức hợp đồng', type: 'select',
+        options: ['Trọn gói', 'Theo đơn giá cố định', 'Theo thời gian', 'Theo tỷ lệ phần trăm'] },
+      { name: 'thoiGianThucHien', label: 'Thời gian thực hiện', type: 'text' },
+      { name: 'ngayKy', label: 'Ngày ký', type: 'date' },
+      { name: 'dieuKhoanChinh', label: 'Điều khoản chính', type: 'textarea', wide: true },
+    ],
     listColumns: [
-      { key: 'maGoiThau', label: 'Mã gói thầu' },
+      { key: 'soHopDong', label: 'Số hợp đồng' },
       { key: 'tenGoiThau', label: 'Tên gói thầu' },
+      { key: 'benB_TenDonVi', label: 'Bên B' },
+      { key: 'ngayKy', label: 'Ngày ký', date: true },
     ],
   },
 };
@@ -91,68 +153,8 @@ const ITEMS_COLUMNS = [
   { key: 'soLuong', label: 'Số lượng', type: 'number' },
   { key: 'donGia', label: 'Đơn giá', type: 'number' },
 ];
-
-// Mẫu email mặc định cho từng loại thông báo trong luồng "Giao việc"
-const EMAIL_TEMPLATE_TYPES = [
-  {
-    key: 'assign_individual',
-    label: 'Giao việc cho cá nhân',
-    placeholders: ['tieuDe', 'nguoiGui', 'link'],
-    defaultSubject: 'Bạn được giao điền thông tin: {tieuDe}',
-    defaultBody: '<p>{nguoiGui} đã giao cho bạn điền một phần thông tin trong hồ sơ "<b>{tieuDe}</b>".</p><p><a href="{link}">Bấm vào đây để điền thông tin</a></p>',
-  },
-  {
-    key: 'assign_unit',
-    label: 'Giao việc cho đơn vị',
-    placeholders: ['tieuDe', 'nguoiGui', 'tenDonVi', 'link'],
-    defaultSubject: 'Đơn vị của bạn được giao điền thông tin: {tieuDe}',
-    defaultBody: '<p>{nguoiGui} đã giao cho đơn vị <b>{tenDonVi}</b> điền một phần thông tin trong hồ sơ "<b>{tieuDe}</b>".</p><p>Bất kỳ ai trong đơn vị có thể nhận và điền. Sau khi điền xong, lãnh đạo đơn vị sẽ xác nhận.</p><p><a href="{link}">Bấm vào đây để điền thông tin</a></p>',
-  },
-  {
-    key: 'submit_for_review',
-    label: 'Nhân viên nộp, cần lãnh đạo duyệt',
-    placeholders: ['tieuDe', 'nguoiGui', 'tenDonVi'],
-    defaultSubject: 'Cần duyệt: {tieuDe}',
-    defaultBody: '<p>{nguoiGui} đã điền xong phần được giao trong hồ sơ "<b>{tieuDe}</b>" (đơn vị {tenDonVi}) và đang chờ bạn xác nhận.</p>',
-  },
-  {
-    key: 'complete_individual',
-    label: 'Cá nhân hoàn thành, báo người giao việc',
-    placeholders: ['tieuDe', 'nguoiGui'],
-    defaultSubject: '{nguoiGui} đã hoàn thành phần điền thông tin',
-    defaultBody: '<p>{nguoiGui} đã điền xong phần được giao trong hồ sơ "<b>{tieuDe}</b>" và xác nhận gửi lại cho bạn.</p>',
-  },
-  {
-    key: 'approve_unit',
-    label: 'Lãnh đạo duyệt xong, báo người giao việc',
-    placeholders: ['tieuDe', 'nguoiGui'],
-    defaultSubject: 'Đơn vị đã hoàn thành: {tieuDe}',
-    defaultBody: '<p>Lãnh đạo đơn vị ({nguoiGui}) đã xác nhận hoàn thành phần điền thông tin trong hồ sơ "<b>{tieuDe}</b>" và gửi lại cho bạn.</p>',
-  },
-];
-
-function renderEmailTemplate(templates, typeKey, vars) {
-  const def = EMAIL_TEMPLATE_TYPES.find((t) => t.key === typeKey);
-  const custom = templates?.[typeKey];
-  let subject = custom?.subject || def.defaultSubject;
-  let body = custom?.body || def.defaultBody;
-  Object.entries(vars).forEach(([k, v]) => {
-    const re = new RegExp('\\{' + k + '\\}', 'g');
-    subject = subject.replace(re, v ?? '');
-    body = body.replace(re, v ?? '');
-  });
-  return { subject, body };
-}
-
 // Schema giả cho "Gói thầu" — tương tự, chỉ chứa trường tùy chỉnh
-const GOI_THAU_BASE_SCHEMA = {
-  key: 'goi_thau',
-  label: 'Gói thầu (thông tin riêng)',
-  fields: [
-    { name: 'giaGoiThau', label: 'Giá gói thầu (VNĐ)', type: 'number' },
-    { name: 'thoiGianThucHien', label: 'Thời gian thực hiện gói thầu', type: 'text' },
-  ],
-};
+const GOI_THAU_BASE_SCHEMA = { key: 'goi_thau', label: 'Gói thầu (thông tin riêng)', fields: [] };
 
 const ROLE_LABELS = { admin: 'Quản trị viên', editor: 'Biên tập', viewer: 'Chỉ xem' };
 const ROLE_BADGE_CLASS = {
@@ -193,56 +195,6 @@ function formatVND(n) {
   const num = Number(n);
   if (Number.isNaN(num)) return '';
   return num.toLocaleString('vi-VN') + ' đ';
-}
-
-// Chuyển số thành chữ tiếng Việt, ví dụ 15000000 -> "Mười lăm triệu đồng"
-function soTienBangChu(n) {
-  const num = Math.round(Number(n));
-  if (Number.isNaN(num)) return '';
-  if (num === 0) return 'Không đồng';
-  const isNegative = num < 0;
-  let value = Math.abs(num);
-
-  const CHU_SO = ['không', 'một', 'hai', 'ba', 'bốn', 'năm', 'sáu', 'bảy', 'tám', 'chín'];
-
-  function docBaSo(baSo, isFirstGroup) {
-    const tram = Math.floor(baSo / 100);
-    const chuc = Math.floor((baSo % 100) / 10);
-    const donvi = baSo % 10;
-    let parts = [];
-    if (tram > 0 || !isFirstGroup) {
-      parts.push(CHU_SO[tram] + ' trăm');
-    }
-    if (chuc === 0) {
-      if (donvi > 0 && (tram > 0 || !isFirstGroup)) parts.push('lẻ');
-    } else if (chuc === 1) {
-      parts.push('mười');
-    } else {
-      parts.push(CHU_SO[chuc] + ' mươi');
-    }
-    if (donvi === 1 && chuc >= 2) parts.push('mốt');
-    else if (donvi === 5 && chuc >= 1) parts.push('lăm');
-    else if (donvi > 0) parts.push(CHU_SO[donvi]);
-    return parts.join(' ');
-  }
-
-  const NHOM = ['', ' nghìn', ' triệu', ' tỷ'];
-  let groups = [];
-  while (value > 0) {
-    groups.push(value % 1000);
-    value = Math.floor(value / 1000);
-  }
-
-  let resultParts = [];
-  for (let i = groups.length - 1; i >= 0; i--) {
-    if (groups[i] === 0) continue;
-    const isFirstGroup = i === groups.length - 1;
-    resultParts.push(docBaSo(groups[i], isFirstGroup) + NHOM[i]);
-  }
-
-  let result = resultParts.join(' ').replace(/\s+/g, ' ').trim();
-  result = result.charAt(0).toUpperCase() + result.slice(1);
-  return (isNegative ? 'Âm ' : '') + result + ' đồng';
 }
 
 function formatDateVN(d) {
@@ -538,15 +490,12 @@ function RoleBadge({ role }) {
   );
 }
 
-function Toast({ message, tone, onClose }) {
+function Toast({ message, tone }) {
   if (!message) return null;
   const toneClass = tone === 'error' ? 'bg-rose-800 text-rose-50' : 'bg-teal-900 text-teal-50';
   return (
-    <div className={`fixed bottom-5 right-5 z-50 flex max-w-sm items-start gap-2 rounded-md px-4 py-2.5 text-sm shadow-lg print:hidden ${toneClass}`}>
-      <span className="flex-1">{message}</span>
-      <button onClick={onClose} className="shrink-0 opacity-70 hover:opacity-100" aria-label="Đóng thông báo">
-        <X className="h-4 w-4" />
-      </button>
+    <div className={`fixed bottom-5 right-5 z-50 rounded-md px-4 py-2.5 text-sm shadow-lg print:hidden ${toneClass}`}>
+      {message}
     </div>
   );
 }
@@ -584,7 +533,7 @@ function Login({ onLogin }) {
   return (
     <div className="flex h-full min-h-[560px] items-center justify-center bg-stone-50 px-6">
       <div className="w-full max-w-sm rounded-lg border border-stone-200 bg-white p-8 shadow-sm">
-        <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-xl text-stone-900">
+        <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">
           Hồ sơ Đấu thầu
         </div>
         <p className="mt-1 text-sm text-stone-500">Đăng nhập để tiếp tục</p>
@@ -689,8 +638,6 @@ export default function App() {
   const [projectSteps, setProjectSteps] = useState({}); // { [projectId]: [{ id, docType, sortOrder, completed }] }
   const [goiThauList, setGoiThauList] = useState({}); // { [projectId]: [{ id, projectId, maGoiThau, tenGoiThau, data, createdAt }] }
   const [templateFieldMode, setTemplateFieldModeState] = useState({}); // { [docType]: { [projectTypeId]: 'extend' | 'replace' } }
-  const [units, setUnits] = useState([]); // [{ id, ten, leaderId }]
-  const [appSettings, setAppSettings] = useState({}); // { background: { type: 'color'|'image', value } }
   const [printTemplates, setPrintTemplates] = useState({}); // { [docType]: { layout: [...] } }
   const [docxTemplates, setDocxTemplates] = useState({}); // { [docType]: { storage_path } }
   const [myAssignments, setMyAssignments] = useState([]); // giao việc điền thông tin (của tôi hoặc do tôi giao)
@@ -715,7 +662,7 @@ export default function App() {
 
   const showToast = useCallback((message, tone = 'ok') => {
     setToast({ message, tone });
-    setTimeout(() => setToast(null), tone === 'error' ? 15000 : 2600);
+    setTimeout(() => setToast(null), 2600);
   }, []);
 
   /* ---------------- auth session ---------------- */
@@ -750,9 +697,9 @@ export default function App() {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      const [profileRes, profilesRes, projectsRes, permsRes, typesRes, auditRes, templatesRes, customFieldsRes, printTemplatesRes, hiddenFieldsRes, fieldOverridesRes, docxTemplatesRes, assignmentsRes, projectStepsRes, goiThauRes, templateModeRes, unitsRes, appSettingsRes] = await Promise.all([
+      const [profileRes, profilesRes, projectsRes, permsRes, typesRes, auditRes, templatesRes, customFieldsRes, printTemplatesRes, hiddenFieldsRes, fieldOverridesRes, docxTemplatesRes, assignmentsRes, projectStepsRes, goiThauRes, templateModeRes] = await Promise.all([
         supabase.from('profiles').select('id, full_name, is_admin').eq('id', session.user.id).single(),
-        supabase.from('profiles').select('id, full_name, is_admin, unit_id, email').order('full_name'),
+        supabase.from('profiles').select('id, full_name, is_admin').order('full_name'),
         supabase.from('projects').select('id, ten, ma_du_an, mo_ta, type_id, data, created_at').order('created_at'),
         supabase.from('project_permissions').select('project_id, user_id, doc_type, can_view, can_add, can_edit, can_lock, can_delete'),
         supabase.from('project_types').select('id, ten').order('ten'),
@@ -763,23 +710,21 @@ export default function App() {
         supabase.from('hidden_builtin_fields').select('doc_type, field_name, project_type_id'),
         supabase.from('field_overrides').select('doc_type, field_name, label, field_type, required, options, project_type_id'),
         supabase.from('docx_templates').select('doc_type, project_type_id, storage_path'),
-        supabase.from('document_assignments').select('id, document_id, doc_type, assigned_to, unit_id, assigned_by, field_keys, status, created_at, submitted_at, completed_at'),
+        supabase.from('document_assignments').select('id, document_id, doc_type, assigned_to, assigned_by, field_keys, status, created_at, completed_at'),
         supabase.from('project_document_types').select('id, project_id, doc_type, sort_order, completed'),
         supabase.from('goi_thau').select('id, project_id, ma_goi_thau, ten_goi_thau, data, created_at'),
         supabase.from('template_field_mode').select('doc_type, project_type_id, mode'),
-        supabase.from('units').select('id, ten, leader_id'),
-        supabase.from('app_settings').select('key, value'),
       ]);
 
       const nextRecords = {};
       for (const key of TYPE_ORDER) {
         const { data: rows } = await supabase
           .from('documents')
-          .select('id, du_an_id, data, locked, status, created_at, updated_at, created_by')
+          .select('id, du_an_id, data, locked, created_at, updated_at, created_by')
           .eq('type', key)
           .order('created_at', { ascending: false });
         nextRecords[key] = (rows || []).map((r) => ({
-          ...r.data, id: r.id, duAnId: r.du_an_id, locked: !!r.locked, status: r.status || 'draft',
+          ...r.data, id: r.id, duAnId: r.du_an_id, locked: !!r.locked,
           createdAt: r.created_at, updatedAt: r.updated_at, createdBy: r.created_by,
         }));
       }
@@ -814,8 +759,6 @@ export default function App() {
         modeByType[m.doc_type][m.project_type_id] = m.mode;
       });
       setTemplateFieldModeState(modeByType);
-      setUnits((unitsRes.data || []).map((u) => ({ id: u.id, ten: u.ten, leaderId: u.leader_id })));
-      setAppSettings(Object.fromEntries((appSettingsRes.data || []).map((s) => [s.key, s.value])));
       setPermissions((permsRes.data || []).map((p) => ({
         projectId: p.project_id, userId: p.user_id, docType: p.doc_type,
         can_view: p.can_view, can_add: p.can_add, can_edit: p.can_edit, can_lock: p.can_lock, can_delete: p.can_delete,
@@ -844,8 +787,8 @@ export default function App() {
       });
       setDocxTemplates(dtByType);
       setMyAssignments((assignmentsRes.data || []).map((a) => ({
-        id: a.id, documentId: a.document_id, docType: a.doc_type, assignedTo: a.assigned_to, unitId: a.unit_id, assignedBy: a.assigned_by,
-        fieldKeys: a.field_keys, status: a.status, createdAt: a.created_at, submittedAt: a.submitted_at, completedAt: a.completed_at,
+        id: a.id, documentId: a.document_id, docType: a.doc_type, assignedTo: a.assigned_to, assignedBy: a.assigned_by,
+        fieldKeys: a.field_keys, status: a.status, createdAt: a.created_at, completedAt: a.completed_at,
       })));
       setRecords(nextRecords);
       setLoading(false);
@@ -967,17 +910,8 @@ export default function App() {
   function hasAnyPermission(projectId, userId) {
     return permissions.some((p) => p.projectId === projectId && p.userId === userId && (p.can_view || p.can_add || p.can_edit || p.can_lock || p.can_delete));
   }
-  // Lãnh đạo đơn vị tự động xem/duyệt được hồ sơ do nhân viên trong đơn vị mình tạo
-  function isLeaderOfCreator(creatorId) {
-    if (!creatorId) return false;
-    const creator = profiles.find((p) => p.id === creatorId);
-    if (!creator || !creator.unit_id) return false;
-    const unit = units.find((u) => u.id === creator.unit_id);
-    return !!unit && unit.leaderId === myId;
-  }
   function canViewRecord(rec, docType) {
     if (amAdmin) return true;
-    if (isLeaderOfCreator(rec.createdBy)) return true;
     if (!rec.duAnId) return false;
     return getPerm(rec.duAnId, myId, docType).view;
   }
@@ -1001,11 +935,6 @@ export default function App() {
     if (amAdmin) return true;
     if (!rec.duAnId) return false;
     return getPerm(rec.duAnId, myId, docType).lock;
-  }
-  function canConfirmDoc(rec, docType) {
-    if (rec.locked) return false;
-    if (canEditDoc(rec, docType)) return true;
-    return isLeaderOfCreator(rec.createdBy);
   }
 
   // Kiểm tra loại hồ sơ này đã "tới lượt" trong dự án chưa (dựa trên các bước đã cấu hình + thứ tự).
@@ -1167,16 +1096,14 @@ export default function App() {
       return;
     }
 
-    const { duAnId, id: _ignored, createdAt, updatedAt, createdBy, locked, status: prevStatus, ...dataFields } = formData;
+    const { duAnId, id: _ignored, createdAt, updatedAt, createdBy, locked, ...dataFields } = formData;
 
     setSaving(true);
     let result;
     if (editingId) {
-      const updatePayload = { du_an_id: duAnId, data: dataFields, updated_at: new Date().toISOString() };
-      if (prevStatus === 'confirmed') updatePayload.status = 'draft'; // sửa lại thì cần xác nhận lại từ đầu
       result = await supabase
         .from('documents')
-        .update(updatePayload)
+        .update({ du_an_id: duAnId, data: dataFields, updated_at: new Date().toISOString() })
         .eq('id', editingId)
         .select()
         .single();
@@ -1195,7 +1122,7 @@ export default function App() {
     }
 
     const row = result.data;
-    const newRecord = { ...row.data, id: row.id, duAnId: row.du_an_id, locked: !!row.locked, status: row.status || 'draft', createdAt: row.created_at, updatedAt: row.updated_at, createdBy: row.created_by };
+    const newRecord = { ...row.data, id: row.id, duAnId: row.du_an_id, locked: !!row.locked, createdAt: row.created_at, updatedAt: row.updated_at, createdBy: row.created_by };
     setRecords((prev) => {
       const list = prev[activeType] || [];
       const newList = editingId ? list.map((r) => (r.id === editingId ? newRecord : r)) : [newRecord, ...list];
@@ -1251,60 +1178,6 @@ export default function App() {
     appendLog(newLocked ? 'lock_doc' : 'unlock_doc', `${myProfile.full_name} đã ${newLocked ? 'khóa' : 'mở khóa'} hồ sơ "${title}".`);
   }
 
-  async function confirmDocument(typeKey, rec) {
-    if (!canConfirmDoc(rec, typeKey)) {
-      showToast('Bạn không có quyền xác nhận hồ sơ này.', 'error');
-      return;
-    }
-    const { error } = await supabase.from('documents').update({ status: 'confirmed' }).eq('id', rec.id);
-    if (error) { showToast('Không thể xác nhận: ' + error.message, 'error'); return; }
-    setRecords((prev) => ({ ...prev, [typeKey]: (prev[typeKey] || []).map((r) => (r.id === rec.id ? { ...r, status: 'confirmed' } : r)) }));
-    showToast('Đã xác nhận hồ sơ.');
-    const title = rec.tenGoiThau || rec.soHopDong || rec.maGoiThau || '';
-    appendLog('confirm_doc', `${myProfile.full_name} đã xác nhận hồ sơ "${title}".`);
-  }
-
-  /* ---------------- đơn vị (phòng ban) + lãnh đạo đơn vị (admin only) ---------------- */
-  async function createUnit(ten) {
-    const { data, error } = await supabase.from('units').insert({ ten }).select().single();
-    if (error) { showToast('Không thể tạo đơn vị: ' + error.message, 'error'); return null; }
-    const newUnit = { id: data.id, ten: data.ten, leaderId: data.leader_id };
-    setUnits((prev) => [...prev, newUnit]);
-    showToast('Đã tạo đơn vị.');
-    appendLog('create_unit', `${myProfile.full_name} đã tạo đơn vị "${ten}".`);
-    return newUnit;
-  }
-  async function deleteUnit(id) {
-    const { error } = await supabase.from('units').delete().eq('id', id);
-    if (error) { showToast('Không thể xóa đơn vị.', 'error'); return; }
-    setUnits((prev) => prev.filter((u) => u.id !== id));
-    setProfiles((prev) => prev.map((p) => (p.unit_id === id ? { ...p, unit_id: null } : p)));
-    showToast('Đã xóa đơn vị.');
-  }
-  async function setUnitLeader(unitId, userId) {
-    const { error } = await supabase.from('units').update({ leader_id: userId || null }).eq('id', unitId);
-    if (error) { showToast('Không thể đặt lãnh đạo: ' + error.message, 'error'); return; }
-    setUnits((prev) => prev.map((u) => (u.id === unitId ? { ...u, leaderId: userId || null } : u)));
-    showToast('Đã cập nhật lãnh đạo đơn vị.');
-    appendLog('set_unit_leader', `${myProfile.full_name} đã đặt "${nameOf(userId)}" làm lãnh đạo đơn vị.`);
-  }
-  async function assignUserToUnit(userId, unitId) {
-    const { error } = await supabase.from('profiles').update({ unit_id: unitId || null }).eq('id', userId);
-    if (error) { showToast('Không thể gán đơn vị: ' + error.message, 'error'); return; }
-    setProfiles((prev) => prev.map((p) => (p.id === userId ? { ...p, unit_id: unitId || null } : p)));
-    showToast('Đã cập nhật đơn vị cho người dùng.');
-  }
-
-  /* ---------------- cài đặt giao diện (nền màn hình dữ liệu) ---------------- */
-  async function saveAppSetting(key, value) {
-    const { error } = await supabase
-      .from('app_settings')
-      .upsert({ key, value, updated_by: myId, updated_at: new Date().toISOString() }, { onConflict: 'key' });
-    if (error) { showToast('Không thể lưu cài đặt: ' + error.message, 'error'); return; }
-    setAppSettings((prev) => ({ ...prev, [key]: value }));
-    showToast('Đã lưu cài đặt giao diện.');
-  }
-
   // rows: [{ duAnId, ...các trường dữ liệu }] — dùng khi nhập hàng loạt từ Excel
   async function bulkImportDocuments(typeKey, rows) {
     // Cache cục bộ trong lần nhập này để tránh tạo trùng gói thầu mới nếu nhiều dòng
@@ -1351,7 +1224,7 @@ export default function App() {
       return { insertedCount: 0, results };
     }
 
-    const newRecords = data.map((r) => ({ ...r.data, id: r.id, duAnId: r.du_an_id, locked: !!r.locked, status: r.status || 'draft', createdAt: r.created_at, updatedAt: r.updated_at, createdBy: r.created_by }));
+    const newRecords = data.map((r) => ({ ...r.data, id: r.id, duAnId: r.du_an_id, locked: !!r.locked, createdAt: r.created_at, updatedAt: r.updated_at, createdBy: r.created_by }));
     setRecords((prev) => ({ ...prev, [typeKey]: [...newRecords, ...(prev[typeKey] || [])] }));
     toInsert.forEach(() => results.push({ ok: true }));
     showToast(`Đã nhập ${newRecords.length} hồ sơ từ Excel.`);
@@ -1371,7 +1244,7 @@ export default function App() {
   }
 
   /* ---------------- custom fields (admin only) ---------------- */
-  async function createCustomField(docType, field, projectTypeId) {
+  async function createCustomField(docType, field, projectTypeId, silent) {
     const typeKey = projectTypeId || GENERIC_TYPE_ID;
     const scoped = (customFields[docType] || []).filter((f) => f.project_type_id === typeKey);
     const maxOrder = scoped.reduce((m, f) => Math.max(m, f.sort_order), 0);
@@ -1380,9 +1253,9 @@ export default function App() {
       .insert({ doc_type: docType, ...field, project_type_id: typeKey, sort_order: maxOrder + 1 })
       .select()
       .single();
-    if (error) { showToast('Không thể thêm trường: ' + error.message, 'error'); return; }
+    if (error) { if (!silent) showToast('Không thể thêm trường: ' + error.message, 'error'); return; }
     setCustomFields((prev) => ({ ...prev, [docType]: [...(prev[docType] || []), data] }));
-    showToast('Đã thêm trường mới.');
+    if (!silent) showToast('Đã thêm trường mới.');
     appendLog('add_custom_field', `${myProfile.full_name} đã thêm trường "${field.label}" vào "${DOC_TYPES[docType].label}".`);
   }
   async function deleteCustomField(docType, id) {
@@ -1467,7 +1340,36 @@ export default function App() {
       .single();
     if (error) { showToast('Không thể lưu thông tin mẫu: ' + error.message, 'error'); return; }
     setDocxTemplates((prev) => ({ ...prev, [docType]: { ...(prev[docType] || {}), [typeKey]: { storage_path: data.storage_path } } }));
+    await autoCreateFieldsFromDocx(docType, file, projectTypeId);
     showToast('Đã tải lên mẫu Word.');
+  }
+
+  /* quét file Word vừa tải lên, tìm các thẻ {ten_truong} và tự tạo trường nhập liệu tương ứng nếu chưa có */
+  async function autoCreateFieldsFromDocx(docType, file, projectTypeId) {
+    try {
+      const buf = await file.arrayBuffer();
+      const zip = new PizZip(buf);
+      const xmlFile = zip.file('word/document.xml');
+      if (!xmlFile) return;
+      const xml = xmlFile.asText();
+      const plain = xml
+        .replace(/<[^>]+>/g, '')
+        .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"').replace(/&apos;/g, "'");
+      const found = [...new Set([...plain.matchAll(/\{([a-zA-Z0-9_]+)\}/g)].map((m) => m[1]))];
+      if (found.length === 0) return;
+      const schema = getSchema(docType, projectTypeId);
+      const known = new Set(['du_an', ...schema.fields.map((f) => f.name)]);
+      const missing = found.filter((k) => !known.has(k));
+      if (missing.length === 0) return;
+      for (const key of missing) {
+        const label = key.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+        await createCustomField(docType, { field_key: key, label, field_type: 'text', required: false, options: null }, projectTypeId, true);
+      }
+      showToast(`Đã tự động tạo ${missing.length} trường mới từ file mẫu: ${missing.map((k) => k.replace(/_/g, ' ')).join(', ')}.`);
+    } catch (err) {
+      showToast('Đã tải lên mẫu, nhưng không thể tự quét trường trong file: ' + (err.message || 'lỗi không xác định'), 'error');
+    }
   }
 
   async function exportDocx(docType, record, project) {
@@ -1503,6 +1405,61 @@ export default function App() {
     }
   }
 
+  /* ---------------- xuất PDF thật (tải file .pdf, không qua hộp thoại in) ---------------- */
+  async function exportPdf(printNode, record, orientation) {
+    if (!printNode) { showToast('Không tìm thấy nội dung để xuất PDF.', 'error'); return; }
+    try {
+      const canvas = await html2canvas(printNode, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({ orientation: orientation === 'landscape' ? 'landscape' : 'portrait', unit: 'mm', format: 'a4' });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = pageWidth;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      let position = 0;
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+      while (heightLeft > 0.5) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+      const title = record.tenGoiThau || record.soHopDong || record.maGoiThau || 'ho_so';
+      pdf.save(`${title}.pdf`);
+    } catch (err) {
+      showToast('Không thể xuất PDF: ' + (err.message || 'lỗi không xác định'), 'error');
+    }
+  }
+
+  /* ---------------- xuất Excel cho Thu thập báo giá ---------------- */
+  function exportBaoGiaExcel(schema, record, project) {
+    try {
+      const headerRows = schema.fields
+        .filter((f) => f.type !== 'items' && f.type !== 'table' && f.name !== 'tenGoiThau')
+        .map((f) => [f.label, f.type === 'number' ? (record[f.name] ?? '') : f.type === 'date' ? formatDateVN(record[f.name]) : (record[f.name] ?? '')]);
+      const topRows = [
+        ['Dự án', project?.ten || ''],
+        ['Tên gói thầu', record.tenGoiThau || ''],
+        ...headerRows,
+        [],
+      ];
+      const items = Array.isArray(record.hangMuc) ? record.hangMuc : [];
+      const itemRows = items.length
+        ? [ITEMS_COLUMNS.map((c) => c.label), ...items.map((row) => ITEMS_COLUMNS.map((c) => (c.type === 'number' ? formatVND(row[c.key]) : (row[c.key] ?? ''))))]
+        : [];
+      const ws = XLSX.utils.aoa_to_sheet([...topRows, ...itemRows]);
+      ws['!cols'] = [{ wch: 28 }, { wch: 36 }, { wch: 14 }, { wch: 14 }];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Bao gia');
+      const title = record.tenGoiThau || record.maGoiThau || 'bao_gia';
+      XLSX.writeFile(wb, `${title}.xlsx`);
+    } catch (err) {
+      showToast('Không thể xuất Excel: ' + (err.message || 'lỗi không xác định'), 'error');
+    }
+  }
+
   /* ---------------- giao việc điền thông tin ---------------- */
   async function sendNotificationEmail(toUserId, subject, html) {
     try {
@@ -1524,56 +1481,26 @@ export default function App() {
     }
   }
 
-  async function createAssignment(documentId, docType, target, fieldKeys, recordTitle) {
-    // target: { type: 'user', userId } hoặc { type: 'unit', unitId }
-    const isUnit = target.type === 'unit';
+  async function createAssignment(documentId, docType, assignedToUserId, fieldKeys, recordTitle) {
     const { data, error } = await supabase
       .from('document_assignments')
-      .insert({
-        document_id: documentId, doc_type: docType,
-        assigned_to: isUnit ? null : target.userId,
-        unit_id: isUnit ? target.unitId : null,
-        assigned_by: myId, field_keys: fieldKeys,
-      })
+      .insert({ document_id: documentId, doc_type: docType, assigned_to: assignedToUserId, assigned_by: myId, field_keys: fieldKeys })
       .select()
       .single();
     if (error) { showToast('Không thể giao việc: ' + error.message, 'error'); return; }
     setMyAssignments((prev) => [...prev, {
-      id: data.id, documentId: data.document_id, docType: data.doc_type, assignedTo: data.assigned_to,
-      unitId: data.unit_id, assignedBy: data.assigned_by,
-      fieldKeys: data.field_keys, status: data.status, createdAt: data.created_at, submittedAt: data.submitted_at, completedAt: data.completed_at,
+      id: data.id, documentId: data.document_id, docType: data.doc_type, assignedTo: data.assigned_to, assignedBy: data.assigned_by,
+      fieldKeys: data.field_keys, status: data.status, createdAt: data.created_at, completedAt: data.completed_at,
     }]);
     const link = `${window.location.origin}${window.location.pathname}?assignment=${data.id}`;
-    const title = recordTitle || DOC_TYPES[docType].label;
-    const templates = appSettings.email_templates;
-
-    if (isUnit) {
-      const unit = units.find((u) => u.id === target.unitId);
-      const members = profiles.filter((p) => p.unit_id === target.unitId);
-      const { subject, body } = renderEmailTemplate(templates, 'assign_unit', {
-        tieuDe: title, nguoiGui: myProfile.full_name, tenDonVi: unit?.ten || '', link,
-      });
-      let emailFailCount = 0;
-      for (const member of members) {
-        const ok = await sendNotificationEmail(member.id, subject, body);
-        if (!ok) emailFailCount++;
-      }
-      appendLog('assign_field_unit', `${myProfile.full_name} đã giao điền thông tin (${fieldKeys.length} trường) cho đơn vị "${unit?.ten || ''}" trong hồ sơ "${title}".`);
-      if (emailFailCount === 0) {
-        showToast(`Đã giao việc cho đơn vị "${unit?.ten || ''}" và gửi email cho ${members.length} thành viên.`);
-      } else if (emailFailCount < members.length) {
-        showToast(`Đã giao việc, nhưng gửi email thất bại cho ${emailFailCount}/${members.length} thành viên (xem chi tiết lỗi ở thông báo trước đó).`, 'error');
-      }
-      // nếu emailFailCount === members.length, thông báo lỗi từ sendNotificationEmail của lần cuối vẫn đang hiển thị, không ghi đè
-    } else {
-      const { subject, body } = renderEmailTemplate(templates, 'assign_individual', {
-        tieuDe: title, nguoiGui: myProfile.full_name, link,
-      });
-      const ok = await sendNotificationEmail(target.userId, subject, body);
-      appendLog('assign_field', `${myProfile.full_name} đã giao điền thông tin (${fieldKeys.length} trường) cho "${nameOf(target.userId)}" trong hồ sơ "${title}".`);
-      if (ok) showToast('Đã giao việc và gửi email thông báo.');
-      // nếu !ok, thông báo lỗi từ sendNotificationEmail đang hiển thị, không ghi đè bằng thông báo thành công giả
-    }
+    await sendNotificationEmail(
+      assignedToUserId,
+      `Bạn được giao điền thông tin: ${recordTitle || DOC_TYPES[docType].label}`,
+      `<p>${myProfile.full_name} đã giao cho bạn điền một phần thông tin trong hồ sơ "<b>${recordTitle || DOC_TYPES[docType].label}</b>".</p>
+       <p><a href="${link}">Bấm vào đây để điền thông tin</a></p>`
+    );
+    showToast('Đã giao việc và gửi email thông báo.');
+    appendLog('assign_field', `${myProfile.full_name} đã giao điền thông tin (${fieldKeys.length} trường) cho "${nameOf(assignedToUserId)}" trong hồ sơ "${recordTitle || ''}".`);
     return data.id;
   }
 
@@ -1595,47 +1522,14 @@ export default function App() {
     const { error } = await supabase.from('document_assignments').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', assignment.id);
     if (error) { showToast('Không thể xác nhận hoàn thành: ' + error.message, 'error'); return; }
     setMyAssignments((prev) => prev.map((a) => (a.id === assignment.id ? { ...a, status: 'completed', completedAt: new Date().toISOString() } : a)));
-    const { subject, body } = renderEmailTemplate(appSettings.email_templates, 'complete_individual', {
-      tieuDe: recordTitle || DOC_TYPES[typeKey].label, nguoiGui: myProfile.full_name,
-    });
-    const ok = await sendNotificationEmail(assignment.assignedBy, subject, body);
+    await sendNotificationEmail(
+      assignment.assignedBy,
+      `${myProfile.full_name} đã hoàn thành phần điền thông tin`,
+      `<p>${myProfile.full_name} đã điền xong phần được giao trong hồ sơ "<b>${recordTitle || DOC_TYPES[typeKey].label}</b>" và xác nhận gửi lại cho bạn.</p>`
+    );
+    showToast('Đã xác nhận hoàn thành và gửi lại cho người giao việc.');
     appendLog('complete_assignment', `${myProfile.full_name} đã hoàn thành phần điền thông tin được giao trong hồ sơ "${recordTitle || ''}".`);
-    if (ok) showToast('Đã xác nhận hoàn thành và gửi lại cho người giao việc.');
   }
-
-  // Nhân viên trong đơn vị nhận việc: điền xong, nộp cho lãnh đạo đơn vị duyệt
-  async function submitAssignmentForReview(assignment, typeKey, recordTitle) {
-    const { error } = await supabase
-      .from('document_assignments')
-      .update({ assigned_to: myId, status: 'submitted', submitted_at: new Date().toISOString() })
-      .eq('id', assignment.id);
-    if (error) { showToast('Không thể nộp: ' + error.message, 'error'); return; }
-    setMyAssignments((prev) => prev.map((a) => (a.id === assignment.id ? { ...a, assignedTo: myId, status: 'submitted', submittedAt: new Date().toISOString() } : a)));
-    const unit = units.find((u) => u.id === assignment.unitId);
-    let ok = true;
-    if (unit?.leaderId) {
-      const { subject, body } = renderEmailTemplate(appSettings.email_templates, 'submit_for_review', {
-        tieuDe: recordTitle || DOC_TYPES[typeKey].label, nguoiGui: myProfile.full_name, tenDonVi: unit.ten,
-      });
-      ok = await sendNotificationEmail(unit.leaderId, subject, body);
-    }
-    appendLog('submit_assignment', `${myProfile.full_name} đã nộp phần điền thông tin trong hồ sơ "${recordTitle || ''}" để lãnh đạo đơn vị duyệt.`);
-    if (ok) showToast('Đã nộp cho lãnh đạo đơn vị duyệt.');
-  }
-
-  // Lãnh đạo đơn vị duyệt phần nhân viên đã nộp -> báo lại cho người giao việc ban đầu
-  async function approveAssignment(assignment, typeKey, recordTitle) {
-    const { error } = await supabase.from('document_assignments').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', assignment.id);
-    if (error) { showToast('Không thể duyệt: ' + error.message, 'error'); return; }
-    setMyAssignments((prev) => prev.map((a) => (a.id === assignment.id ? { ...a, status: 'completed', completedAt: new Date().toISOString() } : a)));
-    const { subject, body } = renderEmailTemplate(appSettings.email_templates, 'approve_unit', {
-      tieuDe: recordTitle || DOC_TYPES[typeKey].label, nguoiGui: myProfile.full_name,
-    });
-    const ok = await sendNotificationEmail(assignment.assignedBy, subject, body);
-    appendLog('approve_assignment', `${myProfile.full_name} đã duyệt phần điền thông tin trong hồ sơ "${recordTitle || ''}" (đơn vị).`);
-    if (ok) showToast('Đã duyệt và gửi lại cho người giao việc.');
-  }
-
 
   /* ---------------- project types (admin only) ---------------- */
   async function createProjectType(ten) {
@@ -1783,7 +1677,6 @@ export default function App() {
   async function updateUserEmail(userId, newEmail) {
     const { ok, result } = await callUserFunction({ action: 'update_email', user_id: userId, new_email: newEmail });
     if (!ok) { showToast('Không thể đổi email: ' + (result.error || ''), 'error'); return false; }
-    setProfiles((prev) => prev.map((p) => (p.id === userId ? { ...p, email: newEmail } : p)));
     showToast(`Đã đổi email cho "${nameOf(userId)}".`);
     appendLog('update_email', `${myProfile.full_name} đã đổi email đăng nhập cho "${nameOf(userId)}".`);
     return true;
@@ -1803,7 +1696,6 @@ export default function App() {
   const detailCanEdit = detailRecord ? canEditDoc(detailRecord, activeType) : false;
   const detailCanDelete = detailRecord ? canDeleteDoc(detailRecord, activeType) : false;
   const detailCanLock = detailRecord ? canLockDoc(detailRecord, activeType) : false;
-  const detailCanConfirm = detailRecord ? canConfirmDoc(detailRecord, activeType) : false;
 
   if (authChecking) return <LoadingScreen label="Đang kiểm tra đăng nhập…" />;
   if (!session) return <Login onLogin={handleLogin} />;
@@ -1819,7 +1711,7 @@ export default function App() {
       {/* Sidebar */}
       <aside className="flex w-64 shrink-0 flex-col bg-teal-950 text-teal-50 print:hidden">
         <div className="border-b border-teal-900 px-5 py-5">
-          <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-lg leading-tight">
+          <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-lg leading-tight">
             Hồ sơ Đấu thầu
           </div>
           <div className="mt-0.5 text-xs text-teal-300/80">Quản lý biểu mẫu &amp; hồ sơ</div>
@@ -1845,17 +1737,11 @@ export default function App() {
               <ClipboardCheck className="h-4 w-4" />
               Nhiệm vụ của tôi
             </span>
-            {(() => {
-              const myUnitId = profiles.find((p) => p.id === myId)?.unit_id;
-              const leaderUnitIds = new Set(units.filter((u) => u.leaderId === myId).map((u) => u.id));
-              const count = myAssignments.filter((a) =>
-                (a.status === 'pending' && (a.assignedTo === myId || (a.unitId && a.unitId === myUnitId))) ||
-                (a.status === 'submitted' && a.unitId && leaderUnitIds.has(a.unitId))
-              ).length;
-              return count > 0 && (
-                <span className="rounded-full bg-amber-500 px-1.5 text-xs text-white">{count}</span>
-              );
-            })()}
+            {myAssignments.filter((a) => a.assignedTo === myId && a.status === 'pending').length > 0 && (
+              <span className="rounded-full bg-amber-500 px-1.5 text-xs text-white">
+                {myAssignments.filter((a) => a.assignedTo === myId && a.status === 'pending').length}
+              </span>
+            )}
           </button>
           {amAdmin && (
             <button
@@ -1888,28 +1774,6 @@ export default function App() {
             >
               <Settings2 className="h-4 w-4" />
               Tùy chỉnh mẫu
-            </button>
-          )}
-          {amAdmin && (
-            <button
-              onClick={() => setView('units')}
-              className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
-                view === 'units' ? 'bg-teal-800/70 text-white' : 'text-teal-200 hover:bg-teal-900/60'
-              }`}
-            >
-              <Users className="h-4 w-4" />
-              Đơn vị
-            </button>
-          )}
-          {amAdmin && (
-            <button
-              onClick={() => setView('appearance')}
-              className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
-                view === 'appearance' ? 'bg-teal-800/70 text-white' : 'text-teal-200 hover:bg-teal-900/60'
-              }`}
-            >
-              <Palette className="h-4 w-4" />
-              Giao diện
             </button>
           )}
           {amAdmin && (
@@ -1990,16 +1854,7 @@ export default function App() {
       </aside>
 
       {/* Main */}
-      <main
-        className="flex-1 overflow-y-auto"
-        style={
-          appSettings.background?.type === 'image'
-            ? { backgroundImage: `url(${appSettings.background.value})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundAttachment: 'fixed' }
-            : appSettings.background?.type === 'color'
-            ? { backgroundColor: appSettings.background.value }
-            : undefined
-        }
-      >
+      <main className="flex-1 overflow-y-auto">
         {view === 'dashboard' && (
           <Dashboard
             records={records}
@@ -2016,17 +1871,9 @@ export default function App() {
 
         {view === 'my-assignments' && (
           <MyAssignmentsView
-            assignments={myAssignments.filter((a) =>
-              a.assignedTo === myId ||
-              (a.unitId && a.unitId === profiles.find((p) => p.id === myId)?.unit_id) ||
-              (a.unitId && units.some((u) => u.id === a.unitId && u.leaderId === myId))
-            )}
+            assignments={myAssignments.filter((a) => a.assignedTo === myId)}
             records={records}
             nameOf={nameOf}
-            unitsById={Object.fromEntries(units.map((u) => [u.id, u]))}
-            myId={myId}
-            myUnitId={profiles.find((p) => p.id === myId)?.unit_id}
-            myLeaderUnitIds={new Set(units.filter((u) => u.leaderId === myId).map((u) => u.id))}
             onOpen={(assignment) => { setActiveType(assignment.docType); setActiveAssignmentId(assignment.id); setView('fill-assignment'); }}
           />
         )}
@@ -2038,19 +1885,14 @@ export default function App() {
             return <div className="p-10 text-center text-stone-400">Không tìm thấy nhiệm vụ này (có thể đã bị xóa).</div>;
           }
           const proj = projectById(projects, rec.duAnId);
-          const title = rec.tenGoiThau || rec.soHopDong || rec.maGoiThau;
-          const isLeaderReview = !!assignment.unitId && assignment.status === 'submitted' && units.some((u) => u.id === assignment.unitId && u.leaderId === myId);
           return (
             <AssignmentFillView
               schema={getSchema(assignment.docType, proj?.typeId)}
               record={rec}
               project={proj}
               assignment={assignment}
-              isLeaderReview={isLeaderReview}
               onSaveDraft={(patch) => saveAssignmentDraft(assignment, assignment.docType, patch)}
-              onComplete={() => completeAssignment(assignment, assignment.docType, title)}
-              onSubmitForReview={() => submitAssignmentForReview(assignment, assignment.docType, title)}
-              onApprove={() => approveAssignment(assignment, assignment.docType, title)}
+              onComplete={() => completeAssignment(assignment, assignment.docType, rec.tenGoiThau || rec.soHopDong || rec.maGoiThau)}
               onBack={() => setView('my-assignments')}
             />
           );
@@ -2103,17 +1945,18 @@ export default function App() {
 
         {view === 'detail' && detailRecord && detailCanView && (
           <DetailView
+            docType={activeType}
             schema={getSchema(activeType, detailProject?.typeId)}
             record={detailRecord}
             project={detailProject}
             canEdit={detailCanEdit}
             canDelete={detailCanDelete}
             canLock={detailCanLock}
-            canConfirm={detailCanConfirm}
-            onConfirm={() => confirmDocument(activeType, detailRecord)}
             customLayout={resolvePrintLayout(activeType, detailProject?.typeId)?.layout}
             hasDocxTemplate={!!resolveDocxTemplate(activeType, detailProject?.typeId)}
             onExportDocx={() => exportDocx(activeType, detailRecord, detailProject)}
+            onExportPdf={exportPdf}
+            onExportExcel={() => exportBaoGiaExcel(getSchema(activeType, detailProject?.typeId), detailRecord, detailProject)}
             onAssign={() => setAssigningRecord({ docType: activeType, record: detailRecord })}
             onBack={() => setView('list')}
             onEdit={() => openEditForm(activeType, detailRecord)}
@@ -2134,11 +1977,10 @@ export default function App() {
           <AssignFieldsModal
             schema={getSchema(assigningRecord.docType, projectById(projects, assigningRecord.record.duAnId)?.typeId)}
             profiles={profiles.filter((p) => p.id !== myId)}
-            units={units}
             onClose={() => setAssigningRecord(null)}
-            onAssign={async (target, fieldKeys) => {
+            onAssign={async (userId, fieldKeys) => {
               const title = assigningRecord.record.tenGoiThau || assigningRecord.record.soHopDong || assigningRecord.record.maGoiThau;
-              await createAssignment(assigningRecord.record.id, assigningRecord.docType, target, fieldKeys, title);
+              await createAssignment(assigningRecord.record.id, assigningRecord.docType, userId, fieldKeys, title);
               setAssigningRecord(null);
             }}
           />
@@ -2207,31 +2049,10 @@ export default function App() {
           />
         )}
 
-        {view === 'units' && amAdmin && (
-          <UnitsView
-            units={units}
-            profiles={profiles}
-            onCreateUnit={createUnit}
-            onDeleteUnit={deleteUnit}
-            onSetLeader={setUnitLeader}
-            onAssignUser={assignUserToUnit}
-            showToast={showToast}
-          />
-        )}
-
-        {view === 'appearance' && amAdmin && (
-          <AppearanceView
-            background={appSettings.background}
-            onSaveBackground={(value) => saveAppSetting('background', value)}
-            emailTemplates={appSettings.email_templates}
-            onSaveEmailTemplates={(value) => saveAppSetting('email_templates', value)}
-          />
-        )}
-
         {view === 'log' && amAdmin && <AuditLog entries={auditLog} />}
       </main>
 
-      <Toast message={toast?.message} tone={toast?.tone} onClose={() => setToast(null)} />
+      <Toast message={toast?.message} tone={toast?.tone} />
     </div>
   );
 }
@@ -2257,7 +2078,7 @@ function Dashboard({ records, projects, allProjectsEmpty, amAdmin, projectFilter
 
   return (
     <div className="mx-auto max-w-4xl px-8 py-10">
-      <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-2xl text-stone-900">
+      <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-2xl text-stone-900">
         Tổng quan hồ sơ đấu thầu
       </div>
       <p className="mt-1 text-sm text-stone-500">
@@ -2346,7 +2167,7 @@ function ListView({
     <div className="mx-auto max-w-5xl px-8 py-8">
       <div className="flex items-center justify-between">
         <div>
-          <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-xl text-stone-900">
+          <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">
             {schema.label}
           </div>
           <div className="text-sm text-stone-500">{list.length} hồ sơ</div>
@@ -2433,7 +2254,7 @@ function ListView({
                     ))}
                     <td className="px-2 py-2.5">
                       <div className="flex items-center justify-end gap-1">
-                        {r.locked ? <Lock className="h-3.5 w-3.5 text-stone-400" title="Đã khóa" /> : r.status === 'confirmed' ? <CheckCircle2 className="h-3.5 w-3.5 text-teal-600" /> : null}
+                        {r.locked && <Lock className="h-3.5 w-3.5 text-stone-400" />}
                         <button onClick={() => onView(r.id)} title="Xem" className="rounded p-1.5 text-stone-500 hover:bg-stone-200 hover:text-teal-900">
                           <FileText className="h-4 w-4" />
                         </button>
@@ -2804,7 +2625,7 @@ function FormView({ schema, formData, errors, editing, saving, projects, package
         <ChevronLeft className="h-4 w-4" /> Quay lại
       </button>
 
-      <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-xl text-stone-900">
+      <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">
         {editing ? `Chỉnh sửa — ${schema.label}` : `Tạo mới — ${schema.label}`}
       </div>
 
@@ -2926,12 +2747,23 @@ function PackageSelectField({ packages, disabled, value, error, onChange, onCrea
 /* Detail / print view                                                 */
 /* ------------------------------------------------------------------ */
 
-function DetailView({ schema, record, project, canEdit, canDelete, canLock, canConfirm, onConfirm, customLayout, hasDocxTemplate, onExportDocx, onAssign, onBack, onEdit, onDelete, onToggleLock, confirmingDelete }) {
+function DetailView({ docType, schema, record, project, canEdit, canDelete, canLock, customLayout, hasDocxTemplate, onExportDocx, onExportPdf, onExportExcel, onAssign, onBack, onEdit, onDelete, onToggleLock, confirmingDelete }) {
   const hangMuc = record.hangMuc;
   const dateStr = formatDateVN(record[schema.dateField]);
   const layoutElements = Array.isArray(customLayout) ? customLayout : (customLayout?.elements || []);
   const layoutOrientation = Array.isArray(customLayout) ? 'portrait' : (customLayout?.orientation || 'portrait');
   const hasCustomLayout = layoutElements.length > 0;
+  const printRef = useRef(null);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const supportsPdfExport = ['bien_ban', 'hop_dong'].includes(docType);
+  const supportsExcelExport = docType === 'bao_gia';
+
+  async function handleExportPdf() {
+    if (!onExportPdf) return;
+    setExportingPdf(true);
+    await onExportPdf(printRef.current, record, layoutOrientation);
+    setExportingPdf(false);
+  }
 
   return (
     <div className="mx-auto max-w-3xl px-8 py-8">
@@ -2940,24 +2772,10 @@ function DetailView({ schema, record, project, canEdit, canDelete, canLock, canC
           <ChevronLeft className="h-4 w-4" /> Quay lại danh sách
         </button>
         <div className="flex items-center gap-2">
-          {record.locked ? (
+          {record.locked && (
             <span className="flex items-center gap-1 rounded-md bg-stone-100 px-2 py-1 text-xs text-stone-500">
               <Lock className="h-3 w-3" /> Đã khóa
             </span>
-          ) : record.status === 'confirmed' ? (
-            <span className="flex items-center gap-1 rounded-md bg-teal-50 px-2 py-1 text-xs text-teal-700">
-              <CheckCircle2 className="h-3 w-3" /> Đã xác nhận
-            </span>
-          ) : (
-            <span className="flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-700">
-              Nháp
-            </span>
-          )}
-          {canConfirm && record.status !== 'confirmed' && (
-            <button onClick={onConfirm}
-              className="flex items-center gap-1.5 rounded-md border border-teal-700 px-3 py-1.5 text-sm text-teal-800 hover:bg-teal-50">
-              <CheckCircle2 className="h-3.5 w-3.5" /> Xác nhận
-            </button>
           )}
           {canLock && (
             <button onClick={onToggleLock}
@@ -2987,9 +2805,19 @@ function DetailView({ schema, record, project, canEdit, canDelete, canLock, canC
               <FileType2 className="h-3.5 w-3.5" /> Xuất Word
             </button>
           )}
+          {supportsExcelExport && (
+            <button onClick={onExportExcel} className="flex items-center gap-1.5 rounded-md border border-emerald-800 px-3 py-1.5 text-sm text-emerald-900 hover:bg-emerald-50">
+              <FileSpreadsheet className="h-3.5 w-3.5" /> Xuất Excel
+            </button>
+          )}
+          {supportsPdfExport && (
+            <button onClick={handleExportPdf} disabled={exportingPdf}
+              className="flex items-center gap-1.5 rounded-md border border-teal-800 px-3 py-1.5 text-sm text-teal-900 hover:bg-teal-50 disabled:opacity-60">
+              {exportingPdf ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} Xuất PDF
+            </button>
+          )}
           <button onClick={() => window.print()} className="flex items-center gap-1.5 rounded-md bg-teal-900 px-3 py-1.5 text-sm text-white hover:bg-teal-800">
-            <Printer className="h-3.5 w-3.5" /> In / Xuất PDF
-          </button>
+            <Printer className="h-3.5 w-3.5" /> In</button>
         </div>
       </div>
 
@@ -2999,6 +2827,7 @@ function DetailView({ schema, record, project, canEdit, canDelete, canLock, canC
         </div>
       )}
 
+      <div ref={printRef}>
       {hasCustomLayout ? (
         <CustomPrintOutput schema={schema} record={record} project={project} elements={layoutElements} orientation={layoutOrientation} />
       ) : (
@@ -3009,7 +2838,7 @@ function DetailView({ schema, record, project, canEdit, canDelete, canLock, canC
           <div className="mx-auto mt-1 h-px w-16 bg-stone-400" />
         </div>
 
-        <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="mt-8 text-center text-xl font-semibold uppercase text-teal-950">
+        <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="mt-8 text-center text-xl font-semibold uppercase text-teal-950">
           {schema.docTitle}
         </div>
         {record.tenGoiThau && <div className="mt-1 text-center text-sm italic text-stone-500">{record.tenGoiThau}</div>}
@@ -3020,12 +2849,7 @@ function DetailView({ schema, record, project, canEdit, canDelete, canLock, canC
             <div key={f.name} className="flex gap-3 text-sm">
               <div className="w-56 shrink-0 text-stone-500">{f.label}</div>
               <div className="flex-1 text-stone-800">
-                {f.type === 'number' ? (
-                  <>
-                    {formatVND(record[f.name])}
-                    {record[f.name] ? <div className="text-xs italic text-stone-400">Bằng chữ: {soTienBangChu(record[f.name])}</div> : null}
-                  </>
-                ) : f.type === 'date' ? formatDateVN(record[f.name]) : (record[f.name] || '—')}
+                {f.type === 'number' ? formatVND(record[f.name]) : f.type === 'date' ? formatDateVN(record[f.name]) : (record[f.name] || '—')}
               </div>
             </div>
           ))}
@@ -3121,6 +2945,7 @@ function DetailView({ schema, record, project, canEdit, canDelete, canLock, canC
         </div>
       </div>
       )}
+      </div>
     </div>
   );
 }
@@ -3134,10 +2959,6 @@ function CustomPrintOutput({ schema, record, project, elements, orientation }) {
 
   function valueFor(fieldKey) {
     if (fieldKey === '__project__') return project ? project.ten : '—';
-    if (fieldKey.endsWith('__words')) {
-      const baseKey = fieldKey.slice(0, -'__words'.length);
-      return record[baseKey] ? soTienBangChu(record[baseKey]) : '';
-    }
     const f = schema.fields.find((x) => x.name === fieldKey);
     if (!f) return record[fieldKey] ?? '';
     if (f.type === 'number') return formatVND(record[fieldKey]);
@@ -3252,7 +3073,7 @@ function AuditLog({ entries }) {
 
   return (
     <div className="mx-auto max-w-4xl px-8 py-8">
-      <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-xl text-stone-900">Nhật ký hoạt động</div>
+      <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">Nhật ký hoạt động</div>
       <p className="mt-1 text-sm text-stone-500">Lưu 300 hoạt động gần nhất trên toàn hệ thống.</p>
 
       <div className="relative mt-4">
@@ -3301,8 +3122,7 @@ function ProjectsView({
   const [selectedSteps, setSelectedSteps] = useState([]); // [docType] theo đúng thứ tự
   const [confirmDeleteProject, setConfirmDeleteProject] = useState(null);
   const [editingStepsFor, setEditingStepsFor] = useState(null); // projectId đang sửa cấu hình bước
-  const [selectedProjectId, setSelectedProjectId] = useState(projects[0]?.id || null);
-  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [managingPackagesFor, setManagingPackagesFor] = useState(null); // projectId đang quản lý danh sách gói thầu
 
   async function handleCreateType(e) {
     e.preventDefault();
@@ -3357,216 +3177,187 @@ function ProjectsView({
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-8 py-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-xl text-stone-900">Dự án</div>
-          <p className="mt-1 text-sm text-stone-500">
-            Chọn 1 dự án bên trái để xem chi tiết và quản lý gói thầu. Việc chọn ai được làm gì thực hiện ở mục "Người dùng".
-          </p>
+    <div className="mx-auto max-w-4xl px-8 py-8">
+      <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">Dự án</div>
+      <p className="mt-1 text-sm text-stone-500">
+        Khai báo loại dự án và tạo dự án tại đây. Việc chọn ai được làm gì trong từng dự án thực hiện ở mục "Người dùng".
+      </p>
+
+      <div className="mt-6 rounded-lg border border-stone-200 bg-white p-5">
+        <div className="flex items-center gap-2 text-sm font-medium text-stone-700">
+          <Tags className="h-4 w-4 text-teal-800" /> Loại dự án
         </div>
-        <button onClick={() => setShowCreateForm((v) => !v)}
-          className="flex items-center gap-1.5 rounded-md bg-teal-900 px-3.5 py-2 text-sm text-white hover:bg-teal-800">
-          <Plus className="h-4 w-4" /> {showCreateForm ? 'Đóng' : 'Tạo dự án mới'}
-        </button>
-      </div>
-
-      <div className="mt-4 rounded-lg border border-stone-200 bg-white p-5">
-        <details>
-          <summary className="flex cursor-pointer items-center gap-2 text-sm font-medium text-stone-700">
-            <Tags className="h-4 w-4 text-teal-800" /> Loại dự án ({projectTypes.length})
-          </summary>
-          <div className="mt-3 divide-y divide-stone-100">
-            {projectTypes.length === 0 && <div className="py-2 text-xs text-stone-400">Chưa có loại dự án nào.</div>}
-            {projectTypes.map((t) => (
-              <div key={t.id} className="flex items-center justify-between py-2">
-                <div className="text-sm text-stone-700">{t.ten} <span className="text-xs text-stone-400">({countUsing(t.id)} dự án)</span></div>
-                <button onClick={() => handleDeleteType(t.id)}
-                  className={`rounded p-1 hover:bg-rose-50 ${confirmDeleteType === t.id ? 'text-rose-700' : 'text-stone-400 hover:text-rose-700'}`}>
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ))}
-          </div>
-          <form onSubmit={handleCreateType} className="mt-3 flex gap-2 border-t border-stone-100 pt-3">
-            <input value={newTypeName} onChange={(e) => setNewTypeName(e.target.value)} placeholder="Tên loại dự án mới, ví dụ: Xây dựng"
-              className="flex-1 rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
-            <button type="submit" className="flex items-center gap-1 rounded-md bg-teal-900 px-3 py-1.5 text-sm text-white hover:bg-teal-800">
-              <Plus className="h-3.5 w-3.5" /> Thêm
-            </button>
-          </form>
-        </details>
-      </div>
-
-      {showCreateForm && (
-        <div className="mt-4 rounded-lg border border-stone-200 bg-white p-5">
-          <div className="flex items-center gap-2 text-sm font-medium text-stone-700">
-            <FolderKanban className="h-4 w-4 text-teal-800" /> Tạo dự án mới
-          </div>
-          <form onSubmit={handleCreateProject} className="mt-3 space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <input value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} placeholder="Tên dự án *"
-                className="col-span-2 rounded-md border border-stone-300 px-3 py-1.5 text-sm sm:col-span-1" />
-              <div className="flex items-center rounded-md border border-dashed border-stone-300 bg-stone-50 px-3 py-1.5 text-sm text-stone-400">
-                Mã dự án: tự động cấp (DA001, DA002...)
-              </div>
-              <select value={newProjectType} onChange={(e) => setNewProjectType(e.target.value)}
-                className="col-span-2 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm sm:col-span-1">
-                <option value="">— Chọn loại dự án (tùy chọn) —</option>
-                {projectTypes.map((t) => <option key={t.id} value={t.id}>{t.ten}</option>)}
-              </select>
-              <input value={newProjectDesc} onChange={(e) => setNewProjectDesc(e.target.value)} placeholder="Mô tả ngắn"
-                className="col-span-2 rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
+        <div className="mt-3 divide-y divide-stone-100">
+          {projectTypes.length === 0 && <div className="py-2 text-xs text-stone-400">Chưa có loại dự án nào.</div>}
+          {projectTypes.map((t) => (
+            <div key={t.id} className="flex items-center justify-between py-2">
+              <div className="text-sm text-stone-700">{t.ten} <span className="text-xs text-stone-400">({countUsing(t.id)} dự án)</span></div>
+              <button onClick={() => handleDeleteType(t.id)}
+                className={`rounded p-1 hover:bg-rose-50 ${confirmDeleteType === t.id ? 'text-rose-700' : 'text-stone-400 hover:text-rose-700'}`}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
             </div>
+          ))}
+        </div>
+        <form onSubmit={handleCreateType} className="mt-3 flex gap-2 border-t border-stone-100 pt-3">
+          <input value={newTypeName} onChange={(e) => setNewTypeName(e.target.value)} placeholder="Tên loại dự án mới, ví dụ: Xây dựng"
+            className="flex-1 rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
+          <button type="submit" className="flex items-center gap-1 rounded-md bg-teal-900 px-3 py-1.5 text-sm text-white hover:bg-teal-800">
+            <Plus className="h-3.5 w-3.5" /> Thêm
+          </button>
+        </form>
+      </div>
 
-            {projectSchema.fields.length > 0 && (
-              <div className="grid grid-cols-2 gap-3 border-t border-stone-100 pt-3">
-                <div className="col-span-2 text-xs font-medium uppercase tracking-wide text-stone-400">Thông tin chung của dự án</div>
-                {projectSchema.fields.map((f) => (
-                  <div key={f.name} className={f.wide ? 'col-span-2' : 'col-span-1'}>
-                    <label className="mb-1 block text-xs font-medium text-stone-600">
-                      {f.label}{f.required && <span className="text-rose-600"> *</span>}
-                    </label>
-                    {f.type === 'table' ? (
-                      <TableFieldEditor columns={f.options} rows={newProjectData[f.name] || []} onChange={(rows) => setNewProjectData((prev) => ({ ...prev, [f.name]: rows }))} />
-                    ) : (
-                      <Field field={f} value={newProjectData[f.name] ?? ''} onChange={(v) => setNewProjectData((prev) => ({ ...prev, [f.name]: v }))} />
-                    )}
+      <div className="mt-6 rounded-lg border border-stone-200 bg-white p-5">
+        <div className="flex items-center gap-2 text-sm font-medium text-stone-700">
+          <FolderKanban className="h-4 w-4 text-teal-800" /> Tạo dự án mới
+        </div>
+        <form onSubmit={handleCreateProject} className="mt-3 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <input value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} placeholder="Tên dự án *"
+              className="col-span-2 rounded-md border border-stone-300 px-3 py-1.5 text-sm sm:col-span-1" />
+            <div className="flex items-center rounded-md border border-dashed border-stone-300 bg-stone-50 px-3 py-1.5 text-sm text-stone-400">
+              Mã dự án: tự động cấp (DA001, DA002...)
+            </div>
+            <select value={newProjectType} onChange={(e) => setNewProjectType(e.target.value)}
+              className="col-span-2 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm sm:col-span-1">
+              <option value="">— Chọn loại dự án (tùy chọn) —</option>
+              {projectTypes.map((t) => <option key={t.id} value={t.id}>{t.ten}</option>)}
+            </select>
+            <input value={newProjectDesc} onChange={(e) => setNewProjectDesc(e.target.value)} placeholder="Mô tả ngắn"
+              className="col-span-2 rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
+          </div>
+
+          {projectSchema.fields.length > 0 && (
+            <div className="grid grid-cols-2 gap-3 border-t border-stone-100 pt-3">
+              <div className="col-span-2 text-xs font-medium uppercase tracking-wide text-stone-400">Thông tin chung của dự án</div>
+              {projectSchema.fields.map((f) => (
+                <div key={f.name} className={f.wide ? 'col-span-2' : 'col-span-1'}>
+                  <label className="mb-1 block text-xs font-medium text-stone-600">
+                    {f.label}{f.required && <span className="text-rose-600"> *</span>}
+                  </label>
+                  {f.type === 'table' ? (
+                    <TableFieldEditor columns={f.options} rows={newProjectData[f.name] || []} onChange={(rows) => setNewProjectData((prev) => ({ ...prev, [f.name]: rows }))} />
+                  ) : (
+                    <Field field={f} value={newProjectData[f.name] ?? ''} onChange={(v) => setNewProjectData((prev) => ({ ...prev, [f.name]: v }))} />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="border-t border-stone-100 pt-3">
+            <div className="text-xs font-medium uppercase tracking-wide text-stone-400">Biểu mẫu cần thiết &amp; thứ tự thực hiện</div>
+            <p className="mt-1 text-xs text-stone-400">Chọn các loại hồ sơ cần cho dự án này. Sẽ khóa loại sau cho đến khi loại trước được đánh dấu hoàn thành.</p>
+            <div className="mt-2 space-y-1">
+              {TYPE_ORDER.map((docType) => (
+                <label key={docType} className="flex items-center gap-2 rounded-md border border-stone-200 px-2 py-1.5 text-sm">
+                  <input type="checkbox" checked={selectedSteps.includes(docType)} onChange={() => toggleStepSelection(docType)} />
+                  {DOC_TYPES[docType].label}
+                </label>
+              ))}
+            </div>
+            {selectedSteps.length > 0 && (
+              <div className="mt-2 rounded-md bg-stone-50 p-2">
+                <div className="text-xs text-stone-500">Thứ tự thực hiện:</div>
+                {selectedSteps.map((docType, idx) => (
+                  <div key={docType} className="mt-1 flex items-center justify-between rounded bg-white px-2 py-1 text-sm">
+                    <span>{idx + 1}. {DOC_TYPES[docType].label}</span>
+                    <div className="flex gap-1">
+                      <button type="button" disabled={idx === 0} onClick={() => moveStep(docType, 'up')} className="rounded p-1 text-stone-400 hover:bg-stone-100 disabled:opacity-30">▲</button>
+                      <button type="button" disabled={idx === selectedSteps.length - 1} onClick={() => moveStep(docType, 'down')} className="rounded p-1 text-stone-400 hover:bg-stone-100 disabled:opacity-30">▼</button>
+                    </div>
                   </div>
                 ))}
               </div>
             )}
+          </div>
 
-            <div className="border-t border-stone-100 pt-3">
-              <div className="text-xs font-medium uppercase tracking-wide text-stone-400">Biểu mẫu cần thiết &amp; thứ tự thực hiện</div>
-              <p className="mt-1 text-xs text-stone-400">Chọn các loại hồ sơ cần cho dự án này. Sẽ khóa loại sau cho đến khi loại trước được đánh dấu hoàn thành.</p>
-              <div className="mt-2 space-y-1">
-                {TYPE_ORDER.map((docType) => (
-                  <label key={docType} className="flex items-center gap-2 rounded-md border border-stone-200 px-2 py-1.5 text-sm">
-                    <input type="checkbox" checked={selectedSteps.includes(docType)} onChange={() => toggleStepSelection(docType)} />
-                    {DOC_TYPES[docType].label}
-                  </label>
+          <button type="submit" className="flex w-full items-center justify-center gap-1.5 rounded-md bg-teal-900 py-2 text-sm text-white hover:bg-teal-800 sm:w-auto sm:px-6">
+            <Plus className="h-4 w-4" /> Tạo dự án
+          </button>
+        </form>
+      </div>
+
+      <div className="mt-6 space-y-3">
+        {projects.length === 0 && (
+          <div className="rounded-lg border border-dashed border-stone-300 py-10 text-center text-sm text-stone-400">Chưa có dự án nào.</div>
+        )}
+        {projects.map((p) => (
+          <div key={p.id} className="rounded-lg border border-stone-200 bg-white p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm font-semibold text-teal-950">{p.ten} {p.maDuAn && <span className="font-normal text-stone-400">({p.maDuAn})</span>}</div>
+                <div className="mt-0.5 flex items-center gap-2 text-xs text-stone-500">
+                  {p.typeName && <span className="rounded bg-stone-100 px-1.5 py-0.5">{p.typeName}</span>}
+                  {p.moTa}
+                </div>
+              </div>
+              <button onClick={() => handleDeleteProject(p)}
+                className={`rounded p-1.5 hover:bg-rose-50 ${confirmDeleteProject === p.id ? 'text-rose-700' : 'text-stone-400 hover:text-rose-700'}`}>
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+
+            {projectSchema.fields.length > 0 && Object.keys(p.data || {}).some((k) => p.data[k]) && (
+              <div className="mt-2 space-y-0.5 border-t border-stone-100 pt-2 text-xs text-stone-500">
+                {projectSchema.fields.filter((f) => f.type !== 'table' && p.data?.[f.name]).map((f) => (
+                  <div key={f.name}>{f.label}: <span className="text-stone-700">{p.data[f.name]}</span></div>
                 ))}
               </div>
-              {selectedSteps.length > 0 && (
-                <div className="mt-2 rounded-md bg-stone-50 p-2">
-                  <div className="text-xs text-stone-500">Thứ tự thực hiện:</div>
-                  {selectedSteps.map((docType, idx) => (
-                    <div key={docType} className="mt-1 flex items-center justify-between rounded bg-white px-2 py-1 text-sm">
-                      <span>{idx + 1}. {DOC_TYPES[docType].label}</span>
-                      <div className="flex gap-1">
-                        <button type="button" disabled={idx === 0} onClick={() => moveStep(docType, 'up')} className="rounded p-1 text-stone-400 hover:bg-stone-100 disabled:opacity-30">▲</button>
-                        <button type="button" disabled={idx === selectedSteps.length - 1} onClick={() => moveStep(docType, 'down')} className="rounded p-1 text-stone-400 hover:bg-stone-100 disabled:opacity-30">▼</button>
-                      </div>
-                    </div>
-                  ))}
+            )}
+
+            <div className="mt-2 border-t border-stone-100 pt-2">
+              {editingStepsFor === p.id ? (
+                <ProjectStepsEditor
+                  initialSteps={(projectSteps[p.id] || []).map((s) => s.docType)}
+                  onCancel={() => setEditingStepsFor(null)}
+                  onSave={async (steps) => { await onSaveProjectSteps(p.id, steps.map((docType) => ({ docType }))); setEditingStepsFor(null); }}
+                />
+              ) : (
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                    {(projectSteps[p.id] || []).length === 0 ? (
+                      <span className="text-stone-400">Chưa cấu hình bước nào (không khóa thứ tự).</span>
+                    ) : (
+                      (projectSteps[p.id] || []).map((s, idx) => (
+                        <span key={s.docType} className={`flex items-center gap-1 rounded px-2 py-0.5 ${s.completed ? 'bg-teal-50 text-teal-700' : 'bg-stone-100 text-stone-500'}`}>
+                          {idx + 1}. {DOC_TYPES[s.docType].short}
+                          {s.completed ? <CheckCircle2 className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
+                        </span>
+                      ))
+                    )}
+                  </div>
+                  <button onClick={() => setEditingStepsFor(p.id)} className="flex items-center gap-1 text-xs text-teal-800 hover:underline">
+                    <Settings2 className="h-3 w-3" /> Sửa các bước
+                  </button>
                 </div>
               )}
             </div>
 
-            <button type="submit" className="flex w-full items-center justify-center gap-1.5 rounded-md bg-teal-900 py-2 text-sm text-white hover:bg-teal-800 sm:w-auto sm:px-6">
-              <Plus className="h-4 w-4" /> Tạo dự án
-            </button>
-          </form>
-        </div>
-      )}
-
-      <div className="mt-4 flex gap-4">
-        <div className="w-64 shrink-0 rounded-lg border border-stone-200 bg-white">
-          {projects.length === 0 && (
-            <div className="p-4 text-center text-xs text-stone-400">Chưa có dự án nào.</div>
-          )}
-          <div className="max-h-[32rem] divide-y divide-stone-100 overflow-y-auto">
-            {projects.map((p) => (
-              <button key={p.id} onClick={() => setSelectedProjectId(p.id)}
-                className={`block w-full px-3 py-2.5 text-left text-sm ${selectedProjectId === p.id ? 'bg-teal-50 text-teal-900' : 'text-stone-700 hover:bg-stone-50'}`}>
-                <div className="font-medium">{p.ten}</div>
-                <div className="mt-0.5 flex items-center gap-1.5 text-xs text-stone-400">
-                  {p.maDuAn}
-                  {p.typeName && <span className="rounded bg-stone-100 px-1 py-0.5">{p.typeName}</span>}
+            <div className="mt-2 border-t border-stone-100 pt-2">
+              {managingPackagesFor === p.id ? (
+                <GoiThauManager
+                  project={p}
+                  goiThauSchema={goiThauSchema}
+                  packages={goiThauList[p.id] || []}
+                  onCreate={(ten, data) => onCreateGoiThau(p.id, ten, data)}
+                  onDelete={(id) => onDeleteGoiThau(id, p.id)}
+                  onClose={() => setManagingPackagesFor(null)}
+                />
+              ) : (
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-stone-500">
+                    {(goiThauList[p.id] || []).length === 0 ? 'Chưa có gói thầu nào.' : `${(goiThauList[p.id] || []).length} gói thầu: ${(goiThauList[p.id] || []).map((g) => g.maGoiThau).join(', ')}`}
+                  </div>
+                  <button onClick={() => setManagingPackagesFor(p.id)} className="flex items-center gap-1 text-xs text-teal-800 hover:underline">
+                    <ClipboardList className="h-3 w-3" /> Quản lý gói thầu
+                  </button>
                 </div>
-              </button>
-            ))}
+              )}
+            </div>
           </div>
-        </div>
-
-        <div className="min-w-0 flex-1">
-          {(() => {
-            const p = projects.find((x) => x.id === selectedProjectId);
-            if (!p) {
-              return <div className="rounded-lg border border-dashed border-stone-300 py-16 text-center text-sm text-stone-400">Chọn 1 dự án bên trái để xem chi tiết.</div>;
-            }
-            return (
-              <div className="space-y-4">
-                <div className="rounded-lg border border-stone-200 bg-white p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-base font-semibold text-teal-950">{p.ten} <span className="font-normal text-stone-400">({p.maDuAn})</span></div>
-                      <div className="mt-0.5 flex items-center gap-2 text-xs text-stone-500">
-                        {p.typeName && <span className="rounded bg-stone-100 px-1.5 py-0.5">{p.typeName}</span>}
-                        {p.moTa}
-                      </div>
-                    </div>
-                    <button onClick={() => handleDeleteProject(p)}
-                      className={`rounded p-1.5 hover:bg-rose-50 ${confirmDeleteProject === p.id ? 'text-rose-700' : 'text-stone-400 hover:text-rose-700'}`}>
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-
-                  {projectSchema.fields.length > 0 && Object.keys(p.data || {}).some((k) => p.data[k]) && (
-                    <div className="mt-2 space-y-0.5 border-t border-stone-100 pt-2 text-xs text-stone-500">
-                      {projectSchema.fields.filter((f) => f.type !== 'table' && p.data?.[f.name]).map((f) => (
-                        <div key={f.name}>{f.label}: <span className="text-stone-700">{p.data[f.name]}</span></div>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="mt-3 border-t border-stone-100 pt-3">
-                    {editingStepsFor === p.id ? (
-                      <ProjectStepsEditor
-                        initialSteps={(projectSteps[p.id] || []).map((s) => s.docType)}
-                        onCancel={() => setEditingStepsFor(null)}
-                        onSave={async (steps) => { await onSaveProjectSteps(p.id, steps.map((docType) => ({ docType }))); setEditingStepsFor(null); }}
-                      />
-                    ) : (
-                      <div className="flex items-center justify-between">
-                        <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                          {(projectSteps[p.id] || []).length === 0 ? (
-                            <span className="text-stone-400">Chưa cấu hình bước nào (không khóa thứ tự).</span>
-                          ) : (
-                            (projectSteps[p.id] || []).map((s, idx) => (
-                              <span key={s.docType} className={`flex items-center gap-1 rounded px-2 py-0.5 ${s.completed ? 'bg-teal-50 text-teal-700' : 'bg-stone-100 text-stone-500'}`}>
-                                {idx + 1}. {DOC_TYPES[s.docType].short}
-                                {s.completed ? <CheckCircle2 className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
-                              </span>
-                            ))
-                          )}
-                        </div>
-                        <button onClick={() => setEditingStepsFor(p.id)} className="flex items-center gap-1 text-xs text-teal-800 hover:underline">
-                          <Settings2 className="h-3 w-3" /> Sửa các bước
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="rounded-lg border border-stone-200 bg-white p-4">
-                  <div className="mb-2 flex items-center gap-2 text-sm font-medium text-stone-700">
-                    <ClipboardList className="h-4 w-4 text-teal-800" /> Danh sách gói thầu
-                  </div>
-                  <GoiThauManager
-                    project={p}
-                    goiThauSchema={goiThauSchema}
-                    packages={goiThauList[p.id] || []}
-                    onCreate={(ten, data) => onCreateGoiThau(p.id, ten, data)}
-                    onDelete={(id) => onDeleteGoiThau(id, p.id)}
-                    embedded
-                  />
-                </div>
-              </div>
-            );
-          })()}
-        </div>
+        ))}
       </div>
     </div>
   );
@@ -3574,7 +3365,7 @@ function ProjectsView({
 
 /* ---------------- Quản lý danh sách "Gói thầu" của 1 dự án (mã tự động sinh) ---------------- */
 
-function GoiThauManager({ project, goiThauSchema, packages, onCreate, onDelete, onClose, embedded }) {
+function GoiThauManager({ project, goiThauSchema, packages, onCreate, onDelete, onClose }) {
   const [tenGoiThau, setTenGoiThau] = useState('');
   const [extraData, setExtraData] = useState({});
   const [creating, setCreating] = useState(false);
@@ -3599,30 +3390,19 @@ function GoiThauManager({ project, goiThauSchema, packages, onCreate, onDelete, 
   }
 
   return (
-    <div className={embedded ? '' : 'rounded-md bg-stone-50 p-3'}>
-      {!embedded && (
+    <div className="rounded-md bg-stone-50 p-3">
       <div className="flex items-center justify-between">
         <div className="text-sm font-medium text-stone-700">Danh sách gói thầu — {project.ten}</div>
         <button onClick={onClose} className="text-xs text-stone-500 hover:underline">Đóng</button>
       </div>
-      )}
 
       <div className="mt-2 divide-y divide-stone-200 rounded-md border border-stone-200 bg-white">
         {packages.length === 0 && <div className="px-3 py-2 text-xs text-stone-400">Chưa có gói thầu nào.</div>}
         {packages.map((g) => (
           <div key={g.id} className="flex items-center justify-between px-3 py-2 text-sm">
             <div>
-              <div>
-                <span className="font-mono text-xs text-teal-800">{g.maGoiThau}</span>
-                <span className="ml-2 text-stone-700">{g.tenGoiThau}</span>
-              </div>
-              {(g.data?.giaGoiThau || g.data?.thoiGianThucHien) && (
-                <div className="mt-0.5 text-xs text-stone-400">
-                  {g.data?.giaGoiThau && <span>Giá: {formatVND(g.data.giaGoiThau)} ({soTienBangChu(g.data.giaGoiThau)})</span>}
-                  {g.data?.giaGoiThau && g.data?.thoiGianThucHien && <span> · </span>}
-                  {g.data?.thoiGianThucHien && <span>Thời gian: {g.data.thoiGianThucHien}</span>}
-                </div>
-              )}
+              <span className="font-mono text-xs text-teal-800">{g.maGoiThau}</span>
+              <span className="ml-2 text-stone-700">{g.tenGoiThau}</span>
             </div>
             <button onClick={() => handleDelete(g.id)}
               className={`rounded p-1 hover:bg-rose-50 ${confirmDelete === g.id ? 'text-rose-700' : 'text-stone-400 hover:text-rose-700'}`}>
@@ -3709,27 +3489,29 @@ function ProjectStepsEditor({ initialSteps, onCancel, onSave }) {
 
 /* ---------------- Sửa thông tin người dùng + đặt lại mật khẩu ---------------- */
 
-function UserEditForm({ user, onCancel, onSaveProfile, onResetPassword, onUpdateEmail, onRemoveUser, isSelf }) {
+function UserEditForm({ user, onCancel, onSaveProfile, onResetPassword, onUpdateEmail }) {
   const [name, setName] = useState(user.full_name || '');
-  const [email, setEmail] = useState(user.email || '');
+  const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [saveDone, setSaveDone] = useState(false);
+  const [savingName, setSavingName] = useState(false);
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [emailDone, setEmailDone] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [resetDone, setResetDone] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const nameChanged = name.trim() !== (user.full_name || '');
-  const emailChanged = email.trim() !== (user.email || '') && email.trim() !== '';
-
-  async function handleSave() {
+  async function handleSaveName() {
     if (!name.trim()) return;
-    setSaving(true);
-    if (nameChanged) await onSaveProfile(name.trim());
-    if (emailChanged) await onUpdateEmail(email.trim());
-    setSaving(false);
-    setSaveDone(true);
-    setTimeout(() => setSaveDone(false), 2500);
+    setSavingName(true);
+    await onSaveProfile(name.trim());
+    setSavingName(false);
+  }
+
+  async function handleSaveEmail() {
+    if (!newEmail.trim()) return;
+    setSavingEmail(true);
+    const ok = await onUpdateEmail(newEmail.trim());
+    setSavingEmail(false);
+    if (ok) { setEmailDone(true); setNewEmail(''); }
   }
 
   async function handleReset() {
@@ -3740,37 +3522,33 @@ function UserEditForm({ user, onCancel, onSaveProfile, onResetPassword, onUpdate
     if (ok) { setResetDone(true); setNewPassword(''); }
   }
 
-  function handleDelete() {
-    if (!confirmDelete) {
-      setConfirmDelete(true);
-      setTimeout(() => setConfirmDelete(false), 3000);
-      return;
-    }
-    onRemoveUser();
-  }
-
   return (
     <div className="space-y-3 rounded-md bg-stone-50 p-3">
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className="mb-1 block text-xs text-stone-500">Họ tên</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} className="w-full rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
+      <div>
+        <label className="mb-1 block text-xs text-stone-500">Họ tên</label>
+        <div className="flex gap-2">
+          <input value={name} onChange={(e) => setName(e.target.value)} className="flex-1 rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
+          <button onClick={handleSaveName} disabled={savingName}
+            className="rounded-md bg-teal-900 px-3 py-1.5 text-xs text-white hover:bg-teal-800 disabled:opacity-60">
+            {savingName ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Lưu tên'}
+          </button>
         </div>
-        <div>
-          <label className="mb-1 block text-xs text-stone-500">Email đăng nhập</label>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
-        </div>
-      </div>
-      <div className="flex items-center gap-2">
-        <button onClick={handleSave} disabled={saving || !name.trim()}
-          className="flex items-center gap-1.5 rounded-md bg-teal-900 px-3 py-1.5 text-xs text-white hover:bg-teal-800 disabled:opacity-60">
-          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-          Lưu thay đổi
-        </button>
-        {saveDone && <span className="flex items-center gap-1 text-xs text-teal-700"><CheckCircle2 className="h-3.5 w-3.5" /> Đã lưu.</span>}
       </div>
 
-      <div className="border-t border-stone-200 pt-3">
+      <div>
+        <label className="mb-1 block text-xs text-stone-500">Đổi email đăng nhập (để trống nếu không đổi)</label>
+        <div className="flex gap-2">
+          <input type="email" value={newEmail} onChange={(e) => { setNewEmail(e.target.value); setEmailDone(false); }}
+            placeholder="Email mới" className="flex-1 rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
+          <button onClick={handleSaveEmail} disabled={savingEmail || !newEmail.trim()}
+            className="rounded-md bg-teal-900 px-3 py-1.5 text-xs text-white hover:bg-teal-800 disabled:opacity-60">
+            {savingEmail ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Đổi email'}
+          </button>
+        </div>
+        {emailDone && <p className="mt-1 flex items-center gap-1 text-xs text-teal-700"><CheckCircle2 className="h-3.5 w-3.5" /> Đã đổi email đăng nhập.</p>}
+      </div>
+
+      <div>
         <label className="mb-1 block text-xs text-stone-500">Đặt lại mật khẩu (để trống nếu không đổi)</label>
         <div className="flex gap-2">
           <input type="password" value={newPassword} onChange={(e) => { setNewPassword(e.target.value); setResetDone(false); }}
@@ -3783,13 +3561,7 @@ function UserEditForm({ user, onCancel, onSaveProfile, onResetPassword, onUpdate
         {resetDone && <p className="mt-1 flex items-center gap-1 text-xs text-teal-700"><CheckCircle2 className="h-3.5 w-3.5" /> Đã đặt lại — báo mật khẩu mới cho người dùng.</p>}
       </div>
 
-      <div className="flex items-center justify-between border-t border-stone-200 pt-3">
-        {!isSelf ? (
-          <button onClick={handleDelete}
-            className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs ${confirmDelete ? 'border-rose-400 bg-rose-50 text-rose-700' : 'border-stone-300 text-stone-600 hover:bg-white'}`}>
-            <Trash2 className="h-3.5 w-3.5" /> {confirmDelete ? 'Bấm lần nữa để xác nhận xóa' : 'Xóa người dùng'}
-          </button>
-        ) : <span />}
+      <div className="flex justify-end">
         <button onClick={onCancel} className="rounded-md border border-stone-300 px-3 py-1 text-xs text-stone-600 hover:bg-white">Đóng</button>
       </div>
     </div>
@@ -3922,7 +3694,7 @@ function UsersView({
   return (
     <div className="mx-auto max-w-4xl px-8 py-8 space-y-6">
       <div>
-        <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-xl text-stone-900">Người dùng</div>
+        <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">Người dùng</div>
         <p className="mt-1 text-sm text-stone-500">Tạo tài khoản và phân quyền chi tiết (Thêm / Xem / Sửa / Khóa / Xóa) theo từng dự án và từng loại hồ sơ.</p>
       </div>
 
@@ -3936,12 +3708,10 @@ function UsersView({
               {editingUserId === u.id ? (
                 <UserEditForm
                   user={u}
-                  isSelf={u.id === myId}
                   onCancel={() => setEditingUserId(null)}
                   onSaveProfile={async (name) => { await onUpdateProfile(u.id, name); }}
                   onUpdateEmail={(email) => onUpdateEmail(u.id, email)}
                   onResetPassword={(pwd) => onResetPassword(u.id, pwd)}
-                  onRemoveUser={async () => { await onRemoveUser(u.id); setEditingUserId(null); }}
                 />
               ) : (
                 <div className="flex items-center justify-between">
@@ -4169,7 +3939,7 @@ function TemplateEditorView({ getSchema, projectTypes, customFields, hiddenField
 
   return (
     <div className="mx-auto max-w-5xl px-8 py-8">
-      <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-xl text-stone-900">Tùy chỉnh mẫu</div>
+      <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">Tùy chỉnh mẫu</div>
       <p className="mt-1 text-sm text-stone-500">Khai báo thêm trường thông tin và thiết kế bố cục bản in cho từng loại hồ sơ. Có thể tạo mẫu riêng theo từng loại dự án.</p>
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -4290,8 +4060,9 @@ function DocxTemplateManager({ docType, schema, existing, onUpload }) {
       <div className="rounded-lg border border-stone-200 bg-white p-5">
         <div className="text-sm font-medium text-stone-700">File mẫu Word (.docx)</div>
         <p className="mt-1 text-xs text-stone-400">
-          Tải lên file Word có sẵn của công ty. Trong file, đặt các thẻ theo đúng "khóa trường" ở cột bên phải,
-          ví dụ gõ <span className="font-mono">{'{ten_goi_thau}'}</span> ngay tại vị trí muốn chèn dữ liệu.
+          Tải lên file Word có sẵn của công ty. Trong file, đặt các thẻ dạng <span className="font-mono">{'{ten_truong}'}</span> tại vị trí muốn chèn dữ liệu
+          (ví dụ <span className="font-mono">{'{ten_goi_thau}'}</span>). Sau khi tải lên, hệ thống sẽ tự quét file và tự tạo luôn các trường nhập liệu
+          cho những thẻ chưa có — không cần khai báo tay lại ở tab "Trường thông tin".
         </p>
         {existing && (
           <div className="mt-2 flex items-center gap-1.5 text-xs text-teal-700">
@@ -4628,11 +4399,7 @@ function PrintDesigner({ docType, schema, savedLayout, onSave }) {
 
   const availableFields = [
     { fieldKey: '__project__', label: 'Dự án' },
-    ...schema.fields.filter((f) => f.type !== 'items' && f.type !== 'table').flatMap((f) =>
-      f.type === 'number'
-        ? [{ fieldKey: f.name, label: f.label }, { fieldKey: f.name + '__words', label: f.label + ' (bằng chữ)' }]
-        : [{ fieldKey: f.name, label: f.label }]
-    ),
+    ...schema.fields.filter((f) => f.type !== 'items' && f.type !== 'table').map((f) => ({ fieldKey: f.name, label: f.label })),
   ];
   const tableFields = schema.fields
     .filter((f) => f.type === 'items' || f.type === 'table')
@@ -4845,10 +4612,8 @@ function PrintDesigner({ docType, schema, savedLayout, onSave }) {
 /* Modal: giao việc điền thông tin cho người khác                      */
 /* ------------------------------------------------------------------ */
 
-function AssignFieldsModal({ schema, profiles, units, onClose, onAssign }) {
-  const [targetType, setTargetType] = useState('user'); // 'user' | 'unit'
+function AssignFieldsModal({ schema, profiles, onClose, onAssign }) {
   const [userId, setUserId] = useState('');
-  const [unitId, setUnitId] = useState('');
   const [selectedFields, setSelectedFields] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const assignableFields = schema.fields.filter((f) => f.name !== 'maGoiThau' && f.name !== 'tenGoiThau');
@@ -4857,13 +4622,10 @@ function AssignFieldsModal({ schema, profiles, units, onClose, onAssign }) {
     setSelectedFields((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]));
   }
 
-  const targetOk = targetType === 'user' ? !!userId : !!unitId;
-
   async function handleSubmit() {
-    if (!targetOk || selectedFields.length === 0) return;
+    if (!userId || selectedFields.length === 0) return;
     setSubmitting(true);
-    const target = targetType === 'user' ? { type: 'user', userId } : { type: 'unit', unitId };
-    await onAssign(target, selectedFields);
+    await onAssign(userId, selectedFields);
     setSubmitting(false);
   }
 
@@ -4874,37 +4636,15 @@ function AssignFieldsModal({ schema, profiles, units, onClose, onAssign }) {
           <div className="text-lg font-semibold text-stone-900">Giao việc điền thông tin</div>
           <button onClick={onClose} className="text-stone-400 hover:text-stone-600"><X className="h-5 w-5" /></button>
         </div>
-        <p className="mt-2 text-sm text-stone-500">Chọn người (hoặc đơn vị) thực hiện và những trường cần điền. Hệ thống sẽ gửi email kèm link.</p>
+        <p className="mt-2 text-sm text-stone-500">Chọn người thực hiện và những trường cần họ điền. Hệ thống sẽ gửi email kèm link cho họ.</p>
 
-        <div className="mt-4 flex gap-1 rounded-md bg-stone-100 p-1">
-          <button onClick={() => setTargetType('user')}
-            className={`flex-1 rounded-md py-1.5 text-xs ${targetType === 'user' ? 'bg-white shadow-sm text-teal-900' : 'text-stone-500'}`}>
-            Cá nhân
-          </button>
-          <button onClick={() => setTargetType('unit')}
-            className={`flex-1 rounded-md py-1.5 text-xs ${targetType === 'unit' ? 'bg-white shadow-sm text-teal-900' : 'text-stone-500'}`}>
-            Đơn vị
-          </button>
+        <div className="mt-4">
+          <label className="mb-1 block text-xs font-medium text-stone-600">Giao cho</label>
+          <select value={userId} onChange={(e) => setUserId(e.target.value)} className="w-full rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm">
+            <option value="">— Chọn người dùng —</option>
+            {profiles.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+          </select>
         </div>
-
-        {targetType === 'user' ? (
-          <div className="mt-3">
-            <label className="mb-1 block text-xs font-medium text-stone-600">Giao cho</label>
-            <select value={userId} onChange={(e) => setUserId(e.target.value)} className="w-full rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm">
-              <option value="">— Chọn người dùng —</option>
-              {profiles.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
-            </select>
-          </div>
-        ) : (
-          <div className="mt-3">
-            <label className="mb-1 block text-xs font-medium text-stone-600">Giao cho đơn vị</label>
-            <select value={unitId} onChange={(e) => setUnitId(e.target.value)} className="w-full rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm">
-              <option value="">— Chọn đơn vị —</option>
-              {units.map((u) => <option key={u.id} value={u.id}>{u.ten}</option>)}
-            </select>
-            <p className="mt-1 text-xs text-stone-400">Bất kỳ ai trong đơn vị có thể nhận và điền. Sau khi điền xong, lãnh đạo đơn vị sẽ xác nhận rồi mới báo lại cho bạn.</p>
-          </div>
-        )}
 
         <div className="mt-4">
           <label className="mb-1 block text-xs font-medium text-stone-600">Trường cần điền</label>
@@ -4927,7 +4667,7 @@ function AssignFieldsModal({ schema, profiles, units, onClose, onAssign }) {
           <button onClick={onClose} className="rounded-md border border-stone-300 px-4 py-2 text-sm text-stone-600 hover:bg-stone-50">Hủy</button>
           <button
             onClick={handleSubmit}
-            disabled={submitting || !targetOk || selectedFields.length === 0}
+            disabled={submitting || !userId || selectedFields.length === 0}
             className="flex items-center gap-1.5 rounded-md bg-teal-900 px-4 py-2 text-sm text-white hover:bg-teal-800 disabled:opacity-60"
           >
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
@@ -4943,12 +4683,8 @@ function AssignFieldsModal({ schema, profiles, units, onClose, onAssign }) {
 /* Danh sách nhiệm vụ của tôi                                           */
 /* ------------------------------------------------------------------ */
 
-function MyAssignmentsView({ assignments, records, nameOf, unitsById, myId, myUnitId, myLeaderUnitIds, onOpen }) {
-  const needsFill = assignments.filter((a) =>
-    a.status === 'pending' && (a.assignedTo === myId || (a.unitId && a.unitId === myUnitId))
-  );
-  const needsMyReview = assignments.filter((a) => a.status === 'submitted' && a.unitId && myLeaderUnitIds.has(a.unitId));
-  const waitingOnLeader = assignments.filter((a) => a.status === 'submitted' && a.assignedTo === myId && !(a.unitId && myLeaderUnitIds.has(a.unitId)));
+function MyAssignmentsView({ assignments, records, nameOf, onOpen }) {
+  const pending = assignments.filter((a) => a.status === 'pending');
   const completed = assignments.filter((a) => a.status === 'completed');
 
   function titleOf(a) {
@@ -4958,61 +4694,24 @@ function MyAssignmentsView({ assignments, records, nameOf, unitsById, myId, myUn
 
   return (
     <div className="mx-auto max-w-3xl px-8 py-8">
-      <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-xl text-stone-900">Nhiệm vụ của tôi</div>
-      <p className="mt-1 text-sm text-stone-500">Những phần thông tin bạn (hoặc đơn vị bạn) được giao điền, và những việc cần bạn duyệt với vai trò lãnh đạo đơn vị.</p>
+      <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">Nhiệm vụ của tôi</div>
+      <p className="mt-1 text-sm text-stone-500">Những phần thông tin bạn được giao điền vào hồ sơ.</p>
 
       <div className="mt-5">
         <div className="text-xs font-medium uppercase tracking-wide text-stone-400">Đang chờ điền</div>
         <div className="mt-2 divide-y divide-stone-200 rounded-lg border border-stone-200 bg-white">
-          {needsFill.length === 0 && <div className="px-4 py-6 text-center text-sm text-stone-400">Không có nhiệm vụ nào đang chờ.</div>}
-          {needsFill.map((a) => (
+          {pending.length === 0 && <div className="px-4 py-6 text-center text-sm text-stone-400">Không có nhiệm vụ nào đang chờ.</div>}
+          {pending.map((a) => (
             <button key={a.id} onClick={() => onOpen(a)} className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-stone-50">
               <div>
                 <div className="text-sm font-medium text-stone-800">{titleOf(a)}</div>
-                <div className="text-xs text-stone-400">
-                  {DOC_TYPES[a.docType].label} · {a.fieldKeys.length} trường cần điền
-                  {a.unitId && <span className="ml-1">· Đơn vị: {unitsById[a.unitId]?.ten || ''}</span>}
-                </div>
+                <div className="text-xs text-stone-400">{DOC_TYPES[a.docType].label} · {a.fieldKeys.length} trường cần điền</div>
               </div>
               <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">Chờ điền</span>
             </button>
           ))}
         </div>
       </div>
-
-      {needsMyReview.length > 0 && (
-        <div className="mt-6">
-          <div className="text-xs font-medium uppercase tracking-wide text-stone-400">Cần bạn duyệt (lãnh đạo đơn vị)</div>
-          <div className="mt-2 divide-y divide-stone-200 rounded-lg border border-stone-200 bg-white">
-            {needsMyReview.map((a) => (
-              <button key={a.id} onClick={() => onOpen(a)} className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-stone-50">
-                <div>
-                  <div className="text-sm font-medium text-stone-800">{titleOf(a)}</div>
-                  <div className="text-xs text-stone-400">{DOC_TYPES[a.docType].label} · {nameOf(a.assignedTo)} đã nộp · Đơn vị: {unitsById[a.unitId]?.ten || ''}</div>
-                </div>
-                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-800">Chờ duyệt</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {waitingOnLeader.length > 0 && (
-        <div className="mt-6">
-          <div className="text-xs font-medium uppercase tracking-wide text-stone-400">Đã nộp, chờ lãnh đạo duyệt</div>
-          <div className="mt-2 divide-y divide-stone-200 rounded-lg border border-stone-200 bg-white">
-            {waitingOnLeader.map((a) => (
-              <div key={a.id} className="flex items-center justify-between px-4 py-3">
-                <div>
-                  <div className="text-sm text-stone-600">{titleOf(a)}</div>
-                  <div className="text-xs text-stone-400">{DOC_TYPES[a.docType].label}</div>
-                </div>
-                <span className="text-xs text-stone-400">Đang chờ duyệt</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {completed.length > 0 && (
         <div className="mt-6">
@@ -5038,7 +4737,7 @@ function MyAssignmentsView({ assignments, records, nameOf, unitsById, myId, myUn
 /* Màn hình điền thông tin được giao + xem trước + xác nhận             */
 /* ------------------------------------------------------------------ */
 
-function AssignmentFillView({ schema, record, project, assignment, isLeaderReview, onSaveDraft, onComplete, onSubmitForReview, onApprove, onBack }) {
+function AssignmentFillView({ schema, record, project, assignment, onSaveDraft, onComplete, onBack }) {
   const [values, setValues] = useState(() => {
     const init = {};
     assignment.fieldKeys.forEach((k) => {
@@ -5051,11 +4750,7 @@ function AssignmentFillView({ schema, record, project, assignment, isLeaderRevie
   const [showPreview, setShowPreview] = useState(false);
   const [saving, setSaving] = useState(false);
   const [completing, setCompleting] = useState(false);
-
-  const isCompleted = assignment.status === 'completed';
-  const isWaitingOnLeader = !isLeaderReview && assignment.status === 'submitted' && !isCompleted;
-  const isReadOnly = isCompleted || isWaitingOnLeader || isLeaderReview;
-  const isUnitFlow = !!assignment.unitId;
+  const isDone = assignment.status === 'completed';
 
   const fields = schema.fields.filter((f) => assignment.fieldKeys.includes(f.name));
 
@@ -5069,17 +4764,10 @@ function AssignmentFillView({ schema, record, project, assignment, isLeaderRevie
     setSaving(false);
   }
 
-  async function handleFinalAction() {
+  async function handleConfirm() {
     setCompleting(true);
-    if (isLeaderReview) {
-      await onApprove();
-    } else {
-      const ok = await onSaveDraft(values);
-      if (ok !== false) {
-        if (isUnitFlow) await onSubmitForReview();
-        else await onComplete();
-      }
-    }
+    const ok = await onSaveDraft(values);
+    if (ok !== false) await onComplete();
     setCompleting(false);
   }
 
@@ -5091,24 +4779,14 @@ function AssignmentFillView({ schema, record, project, assignment, isLeaderRevie
         <ChevronLeft className="h-4 w-4" /> Quay lại danh sách nhiệm vụ
       </button>
 
-      <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-xl text-stone-900">
-        {isLeaderReview ? 'Duyệt phần đã điền — ' : 'Điền thông tin được giao — '}{schema.label}
+      <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">
+        Điền thông tin được giao — {schema.label}
       </div>
       {project && <p className="mt-1 text-sm text-stone-500">Dự án: {project.ten}</p>}
 
-      {isCompleted && (
+      {isDone && (
         <div className="mt-3 flex items-center gap-2 rounded-md bg-teal-50 px-3 py-2 text-sm text-teal-800">
-          <CheckCircle2 className="h-4 w-4" /> Đã hoàn thành và gửi lại cho người giao việc.
-        </div>
-      )}
-      {isWaitingOnLeader && (
-        <div className="mt-3 flex items-center gap-2 rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-800">
-          Bạn đã nộp phần này — đang chờ lãnh đạo đơn vị xác nhận.
-        </div>
-      )}
-      {isLeaderReview && (
-        <div className="mt-3 flex items-center gap-2 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Nhân viên đã điền xong phần này — kiểm tra rồi bấm "Duyệt" để xác nhận hoàn thành và báo lại cho người giao việc.
+          <CheckCircle2 className="h-4 w-4" /> Bạn đã xác nhận hoàn thành phần này.
         </div>
       )}
 
@@ -5125,14 +4803,14 @@ function AssignmentFillView({ schema, record, project, assignment, isLeaderRevie
                 ) : f.type === 'table' ? (
                   <TableFieldEditor columns={f.options} rows={values[f.name]} onChange={(rows) => updateValue(f.name, rows)} />
                 ) : (
-                  <Field field={f} value={values[f.name] ?? ''} onChange={(v) => updateValue(f.name, v)} disabled={isReadOnly} />
+                  <Field field={f} value={values[f.name] ?? ''} onChange={(v) => updateValue(f.name, v)} disabled={isDone} />
                 )}
               </div>
             ))}
           </div>
 
           <div className="mt-6 flex items-center justify-end gap-2 border-t border-stone-200 pt-5">
-            {!isReadOnly && (
+            {!isDone && (
               <button onClick={handleSaveDraft} disabled={saving}
                 className="flex items-center gap-1.5 rounded-md border border-stone-300 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-60">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -5160,466 +4838,20 @@ function AssignmentFillView({ schema, record, project, assignment, isLeaderRevie
             onToggleLock={() => {}}
             confirmingDelete={false}
           />
-          {!isReadOnly && (
+          {!isDone && (
             <div className="mx-auto mt-4 flex max-w-3xl justify-end gap-2 px-8 print:hidden">
               <button onClick={() => setShowPreview(false)} className="rounded-md border border-stone-300 px-4 py-2 text-sm text-stone-600 hover:bg-stone-50">
                 Quay lại chỉnh sửa
               </button>
-              <button onClick={handleFinalAction} disabled={completing}
+              <button onClick={handleConfirm} disabled={completing}
                 className="flex items-center gap-1.5 rounded-md bg-teal-900 px-4 py-2 text-sm text-white hover:bg-teal-800 disabled:opacity-60">
                 {completing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                {isUnitFlow ? 'Nộp cho lãnh đạo duyệt' : 'Xác nhận hoàn thành & gửi lại'}
-              </button>
-            </div>
-          )}
-          {isLeaderReview && (
-            <div className="mx-auto mt-4 flex max-w-3xl justify-end gap-2 px-8 print:hidden">
-              <button onClick={() => setShowPreview(false)} className="rounded-md border border-stone-300 px-4 py-2 text-sm text-stone-600 hover:bg-stone-50">
-                Đóng xem trước
-              </button>
-              <button onClick={handleFinalAction} disabled={completing}
-                className="flex items-center gap-1.5 rounded-md bg-teal-900 px-4 py-2 text-sm text-white hover:bg-teal-800 disabled:opacity-60">
-                {completing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                Duyệt &amp; xác nhận hoàn thành
-              </button>
-            </div>
-          )}
-          {isReadOnly && !isLeaderReview && (
-            <div className="mx-auto mt-4 flex max-w-3xl justify-end px-8 print:hidden">
-              <button onClick={() => setShowPreview(false)} className="rounded-md border border-stone-300 px-4 py-2 text-sm text-stone-600 hover:bg-stone-50">
-                Đóng xem trước
+                Xác nhận hoàn thành &amp; gửi lại
               </button>
             </div>
           )}
         </div>
       )}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Trang "Đơn vị" — tạo đơn vị, gán nhân viên, chọn lãnh đạo đơn vị     */
-/* ------------------------------------------------------------------ */
-
-function UnitsView({ units, profiles, onCreateUnit, onDeleteUnit, onSetLeader, onAssignUser, showToast }) {
-  const [newUnitName, setNewUnitName] = useState('');
-  const [confirmDelete, setConfirmDelete] = useState(null);
-  const [addMemberDraft, setAddMemberDraft] = useState({}); // { [unitId]: userId }
-
-  const [bulkRows, setBulkRows] = useState([]); // [{ unitName, memberName, isLeader, error? }]
-  const [bulkResults, setBulkResults] = useState(null);
-  const [bulkSubmitting, setBulkSubmitting] = useState(false);
-  const fileInputRef = useRef(null);
-
-  async function handleCreate(e) {
-    e.preventDefault();
-    if (!newUnitName.trim()) return;
-    if (units.some((u) => u.ten.toLowerCase() === newUnitName.trim().toLowerCase())) {
-      showToast('Đơn vị này đã tồn tại.', 'error');
-      return;
-    }
-    await onCreateUnit(newUnitName.trim());
-    setNewUnitName('');
-  }
-
-  async function handleDelete(id) {
-    if (confirmDelete !== id) {
-      setConfirmDelete(id);
-      setTimeout(() => setConfirmDelete((c) => (c === id ? null : c)), 3000);
-      return;
-    }
-    await onDeleteUnit(id);
-    setConfirmDelete(null);
-  }
-
-  function downloadUnitTemplate() {
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.aoa_to_sheet([
-      ['Tên đơn vị', 'Họ tên nhân viên', 'Là lãnh đạo'],
-      ['Phòng Kỹ thuật', 'Nguyễn Văn A', 'x'],
-      ['Phòng Kỹ thuật', 'Trần Thị B', ''],
-      ['Phòng Kinh doanh', 'Lê Văn C', 'x'],
-    ]);
-    XLSX.utils.book_append_sheet(wb, ws, 'Đơn vị');
-    XLSX.writeFile(wb, 'mau_nhap_don_vi.xlsx');
-  }
-
-  function handleFile(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      try {
-        const wb = XLSX.read(evt.target.result, { type: 'binary' });
-        const sheet = wb.Sheets[wb.SheetNames[0]];
-        const json = XLSX.utils.sheet_to_json(sheet, { defval: '' });
-        const rows = json.map((row) => {
-          const getVal = (keys) => {
-            for (const k of Object.keys(row)) {
-              if (keys.some((target) => k.trim().toLowerCase() === target)) return row[k];
-            }
-            return '';
-          };
-          const unitName = String(getVal(['tên đơn vị', 'ten don vi', 'đơn vị', 'don vi']) || '').trim();
-          const memberName = String(getVal(['họ tên nhân viên', 'ho ten nhan vien', 'nhân viên', 'nhan vien']) || '').trim();
-          const isLeaderRaw = String(getVal(['là lãnh đạo', 'la lanh dao', 'lãnh đạo', 'lanh dao']) || '').trim().toLowerCase();
-          const isLeader = ['x', 'có', 'co', 'yes', 'true', '1'].includes(isLeaderRaw);
-          let error = null;
-          if (!unitName) error = 'Thiếu tên đơn vị';
-          else if (memberName && !profiles.some((p) => (p.full_name || '').trim().toLowerCase() === memberName.toLowerCase())) {
-            error = `Không tìm thấy người dùng tên "${memberName}"`;
-          }
-          return { unitName, memberName, isLeader, error };
-        });
-        setBulkRows(rows);
-        setBulkResults(null);
-        showToast(`Đã đọc ${rows.length} dòng từ file Excel.`);
-      } catch (err) {
-        showToast('Không đọc được file Excel: ' + err.message, 'error');
-      }
-    };
-    reader.readAsBinaryString(file);
-    e.target.value = '';
-  }
-
-  async function submitBulk() {
-    const validRows = bulkRows.filter((r) => !r.error);
-    if (validRows.length === 0) return;
-    setBulkSubmitting(true);
-
-    // cache cục bộ để tránh tạo trùng đơn vị mới khi nhiều dòng cùng nhắc 1 tên đơn vị chưa có
-    const unitCache = {};
-    units.forEach((u) => { unitCache[u.ten.trim().toLowerCase()] = u; });
-
-    const results = [];
-    for (const row of validRows) {
-      const key = row.unitName.trim().toLowerCase();
-      let unit = unitCache[key];
-      if (!unit) {
-        unit = await onCreateUnit(row.unitName.trim());
-        if (!unit) { results.push({ ...row, ok: false, error: 'Không thể tạo đơn vị' }); continue; }
-        unitCache[key] = unit;
-      }
-      if (row.memberName) {
-        const profile = profiles.find((p) => (p.full_name || '').trim().toLowerCase() === row.memberName.toLowerCase());
-        if (profile) {
-          await onAssignUser(profile.id, unit.id);
-          if (row.isLeader) await onSetLeader(unit.id, profile.id);
-        }
-      }
-      results.push({ ...row, ok: true });
-    }
-    setBulkSubmitting(false);
-    setBulkResults(results);
-    if (results.every((r) => r.ok)) setBulkRows([]);
-  }
-
-  return (
-    <div className="mx-auto max-w-4xl px-8 py-8">
-      <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-xl text-stone-900">Đơn vị</div>
-      <p className="mt-1 text-sm text-stone-500">
-        Chia người dùng theo đơn vị/phòng ban. Người được đặt làm <strong>Lãnh đạo đơn vị</strong> sẽ tự động xem và xác nhận được
-        hồ sơ do nhân viên trong đơn vị mình tạo, không cần cấp quyền riêng theo dự án.
-      </p>
-
-      <div className="mt-6 rounded-lg border border-stone-200 bg-white p-5">
-        <div className="flex items-center gap-2 text-sm font-medium text-stone-700">
-          <Users className="h-4 w-4 text-teal-800" /> Tạo đơn vị mới
-        </div>
-        <form onSubmit={handleCreate} className="mt-3 flex gap-2">
-          <input value={newUnitName} onChange={(e) => setNewUnitName(e.target.value)} placeholder="Tên đơn vị, ví dụ: Phòng Kỹ thuật"
-            className="flex-1 rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
-          <button type="submit" className="flex items-center gap-1 rounded-md bg-teal-900 px-3 py-1.5 text-sm text-white hover:bg-teal-800">
-            <Plus className="h-3.5 w-3.5" /> Tạo
-          </button>
-        </form>
-      </div>
-
-      <div className="mt-6 rounded-lg border border-stone-200 bg-white p-5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm font-medium text-stone-700">
-            <FileSpreadsheet className="h-4 w-4 text-teal-800" /> Nhập danh sách đơn vị từ Excel
-          </div>
-          <button type="button" onClick={downloadUnitTemplate} className="flex items-center gap-1 text-xs text-teal-800 hover:underline">
-            <Download className="h-3.5 w-3.5" /> Tải file mẫu
-          </button>
-        </div>
-        <p className="mt-1 text-xs text-stone-400">
-          Mỗi dòng là 1 nhân viên thuộc 1 đơn vị. Nhiều dòng cùng "Tên đơn vị" sẽ gộp vào chung 1 đơn vị.
-          Cột "Là lãnh đạo" ghi "x" để đặt người đó làm lãnh đạo. Có thể để trống "Họ tên nhân viên" nếu chỉ muốn tạo đơn vị chưa có ai.
-        </p>
-        <div className="mt-2">
-          <button type="button" onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-1.5 rounded-md border border-teal-800 px-3 py-1.5 text-sm text-teal-900 hover:bg-teal-50">
-            <Upload className="h-3.5 w-3.5" /> Tải lên file Excel (.xlsx)
-          </button>
-          <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleFile} className="hidden" />
-        </div>
-
-        {bulkRows.length > 0 && (
-          <>
-            <div className="mt-3 max-h-64 overflow-y-auto rounded-md border border-stone-200">
-              <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-stone-50 text-stone-500">
-                  <tr>
-                    <th className="px-2 py-1.5 text-left">Đơn vị</th>
-                    <th className="px-2 py-1.5 text-left">Nhân viên</th>
-                    <th className="px-2 py-1.5 text-left">Lãnh đạo</th>
-                    <th className="px-2 py-1.5 text-left">Trạng thái</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {bulkRows.map((r, i) => {
-                    const res = bulkResults?.[i];
-                    return (
-                      <tr key={i} className="border-t border-stone-100">
-                        <td className="px-2 py-1.5">{r.unitName || '—'}</td>
-                        <td className="px-2 py-1.5">{r.memberName || '—'}</td>
-                        <td className="px-2 py-1.5">{r.isLeader ? 'Có' : ''}</td>
-                        <td className="px-2 py-1.5">
-                          {res ? (res.ok ? <span className="flex items-center gap-1 text-teal-700"><CheckCircle2 className="h-3.5 w-3.5" /> Đã nhập</span> : <span className="flex items-center gap-1 text-rose-600"><XCircle className="h-3.5 w-3.5" /> {res.error}</span>)
-                            : r.error ? <span className="flex items-center gap-1 text-rose-600"><XCircle className="h-3.5 w-3.5" /> {r.error}</span> : <span className="text-stone-400">Sẵn sàng</span>}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <button type="button" onClick={submitBulk} disabled={bulkSubmitting || bulkRows.every((r) => r.error)}
-              className="mt-2 flex items-center gap-1.5 rounded-md bg-teal-900 px-3 py-1.5 text-sm text-white hover:bg-teal-800 disabled:opacity-60">
-              {bulkSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-              Nhập {bulkRows.filter((r) => !r.error).length} dòng hợp lệ
-            </button>
-          </>
-        )}
-      </div>
-
-      <div className="mt-6 space-y-4">
-        {units.length === 0 && (
-          <div className="rounded-lg border border-dashed border-stone-300 py-10 text-center text-sm text-stone-400">Chưa có đơn vị nào.</div>
-        )}
-        {units.map((u) => {
-          const members = profiles.filter((p) => p.unit_id === u.id);
-          const available = profiles.filter((p) => p.unit_id !== u.id);
-          const draftUserId = addMemberDraft[u.id] || '';
-          return (
-            <div key={u.id} className="rounded-lg border border-stone-200 bg-white p-5">
-              <div className="flex items-center justify-between">
-                <div className="text-sm font-semibold text-teal-950">{u.ten}</div>
-                <button onClick={() => handleDelete(u.id)}
-                  className={`rounded p-1.5 hover:bg-rose-50 ${confirmDelete === u.id ? 'text-rose-700' : 'text-stone-400 hover:text-rose-700'}`}>
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-
-              <div className="mt-3">
-                <label className="mb-1 block text-xs font-medium text-stone-600">Lãnh đạo đơn vị</label>
-                <select value={u.leaderId || ''} onChange={(e) => onSetLeader(u.id, e.target.value || null)}
-                  className="w-full rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm">
-                  <option value="">— Chưa chọn —</option>
-                  {members.map((m) => <option key={m.id} value={m.id}>{m.full_name}</option>)}
-                </select>
-                {members.length === 0 && <p className="mt-1 text-xs text-stone-400">Thêm thành viên vào đơn vị trước để chọn lãnh đạo.</p>}
-              </div>
-
-              <div className="mt-3">
-                <div className="text-xs font-medium uppercase tracking-wide text-stone-400">Thành viên</div>
-                <div className="mt-1.5 space-y-1">
-                  {members.length === 0 && <div className="text-xs text-stone-400">Chưa có ai trong đơn vị này.</div>}
-                  {members.map((m) => (
-                    <div key={m.id} className="flex items-center justify-between rounded-md bg-stone-50 px-3 py-1.5 text-sm">
-                      <span>{m.full_name}{u.leaderId === m.id && <span className="ml-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">Lãnh đạo</span>}</span>
-                      <button onClick={() => onAssignUser(m.id, null)} className="text-stone-400 hover:text-rose-700"><X className="h-3.5 w-3.5" /></button>
-                    </div>
-                  ))}
-                </div>
-                {available.length > 0 && (
-                  <div className="mt-2 flex gap-2">
-                    <select value={draftUserId} onChange={(e) => setAddMemberDraft((prev) => ({ ...prev, [u.id]: e.target.value }))}
-                      className="flex-1 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm">
-                      <option value="">— Chọn người dùng để thêm —</option>
-                      {available.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
-                    </select>
-                    <button
-                      onClick={() => { if (draftUserId) { onAssignUser(draftUserId, u.id); setAddMemberDraft((prev) => ({ ...prev, [u.id]: '' })); } }}
-                      className="flex items-center gap-1 rounded-md border border-teal-800 px-3 py-1.5 text-sm text-teal-900 hover:bg-teal-50">
-                      <UserPlus className="h-3.5 w-3.5" /> Thêm
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Trang "Giao diện" — tùy chỉnh nền cho màn hình dữ liệu               */
-/* ------------------------------------------------------------------ */
-
-function AppearanceView({ background, onSaveBackground, emailTemplates, onSaveEmailTemplates }) {
-  const [tab, setTab] = useState('background'); // background | email
-  const [mode, setMode] = useState(background?.type || 'none'); // none | color | image
-  const [color, setColor] = useState(background?.type === 'color' ? background.value : '#f5f5f4');
-  const [imageUrl, setImageUrl] = useState(background?.type === 'image' ? background.value : '');
-  const [saving, setSaving] = useState(false);
-
-  async function handleSave() {
-    setSaving(true);
-    if (mode === 'none') await onSaveBackground(null);
-    else if (mode === 'color') await onSaveBackground({ type: 'color', value: color });
-    else if (mode === 'image') await onSaveBackground({ type: 'image', value: imageUrl.trim() });
-    setSaving(false);
-  }
-
-  return (
-    <div className="mx-auto max-w-2xl px-8 py-8">
-      <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-xl text-stone-900">Giao diện</div>
-      <p className="mt-1 text-sm text-stone-500">Tùy chỉnh nền màn hình dữ liệu và nội dung email thông báo (áp dụng cho mọi người dùng).</p>
-
-      <div className="mt-4 flex gap-1 border-b border-stone-200">
-        <button onClick={() => setTab('background')}
-          className={`border-b-2 px-3 py-1.5 text-sm ${tab === 'background' ? 'border-teal-800 font-medium text-teal-900' : 'border-transparent text-stone-500 hover:text-stone-700'}`}>
-          Nền màn hình
-        </button>
-        <button onClick={() => setTab('email')}
-          className={`border-b-2 px-3 py-1.5 text-sm ${tab === 'email' ? 'border-teal-800 font-medium text-teal-900' : 'border-transparent text-stone-500 hover:text-stone-700'}`}>
-          Mẫu email
-        </button>
-      </div>
-
-      {tab === 'background' && (
-      <div className="mt-5 rounded-lg border border-stone-200 bg-white p-5">
-        <div className="flex gap-1 rounded-md bg-stone-100 p-1">
-          <button onClick={() => setMode('none')} className={`flex-1 rounded-md py-1.5 text-sm ${mode === 'none' ? 'bg-white shadow-sm text-teal-900' : 'text-stone-500'}`}>Mặc định</button>
-          <button onClick={() => setMode('color')} className={`flex-1 rounded-md py-1.5 text-sm ${mode === 'color' ? 'bg-white shadow-sm text-teal-900' : 'text-stone-500'}`}>Màu nền</button>
-          <button onClick={() => setMode('image')} className={`flex-1 rounded-md py-1.5 text-sm ${mode === 'image' ? 'bg-white shadow-sm text-teal-900' : 'text-stone-500'}`}>Hình nền</button>
-        </div>
-
-        {mode === 'color' && (
-          <div className="mt-4">
-            <label className="mb-1 block text-xs font-medium text-stone-600">Chọn màu nền</label>
-            <div className="flex items-center gap-3">
-              <input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="h-10 w-16 cursor-pointer rounded border border-stone-300" />
-              <input value={color} onChange={(e) => setColor(e.target.value)} className="flex-1 rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
-            </div>
-          </div>
-        )}
-
-        {mode === 'image' && (
-          <div className="mt-4">
-            <label className="mb-1 block text-xs font-medium text-stone-600">Đường dẫn ảnh (URL)</label>
-            <input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://..."
-              className="w-full rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
-            <p className="mt-1 text-xs text-stone-400">Dán đường dẫn tới 1 ảnh đã có sẵn trên mạng (ví dụ ảnh tải lên Google Drive/Imgur ở chế độ công khai).</p>
-          </div>
-        )}
-
-        {mode !== 'none' && (
-          <div className="mt-4 rounded-md border border-dashed border-stone-300 p-4">
-            <div className="text-xs text-stone-400">Xem trước:</div>
-            <div className="mt-2 h-24 rounded-md" style={
-              mode === 'color' ? { backgroundColor: color } : { backgroundImage: `url(${imageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
-            } />
-          </div>
-        )}
-
-        <button onClick={handleSave} disabled={saving}
-          className="mt-5 flex items-center gap-1.5 rounded-md bg-teal-900 px-4 py-2 text-sm text-white hover:bg-teal-800 disabled:opacity-60">
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          Lưu cài đặt
-        </button>
-      </div>
-      )}
-
-      {tab === 'email' && (
-        <EmailTemplatesEditor templates={emailTemplates} onSave={onSaveEmailTemplates} />
-      )}
-    </div>
-  );
-}
-
-/* ---------------- Chỉnh mẫu email cho từng loại thông báo ---------------- */
-
-function EmailTemplatesEditor({ templates, onSave }) {
-  const [selectedType, setSelectedType] = useState(EMAIL_TEMPLATE_TYPES[0].key);
-  const def = EMAIL_TEMPLATE_TYPES.find((t) => t.key === selectedType);
-  const current = templates?.[selectedType];
-  const [subject, setSubject] = useState(current?.subject || def.defaultSubject);
-  const [body, setBody] = useState(current?.body || def.defaultBody);
-  const [saving, setSaving] = useState(false);
-  const [saveDone, setSaveDone] = useState(false);
-
-  function selectType(key) {
-    setSelectedType(key);
-    const d = EMAIL_TEMPLATE_TYPES.find((t) => t.key === key);
-    const c = templates?.[key];
-    setSubject(c?.subject || d.defaultSubject);
-    setBody(c?.body || d.defaultBody);
-    setSaveDone(false);
-  }
-
-  async function handleSave() {
-    setSaving(true);
-    await onSave({ ...(templates || {}), [selectedType]: { subject, body } });
-    setSaving(false);
-    setSaveDone(true);
-    setTimeout(() => setSaveDone(false), 2500);
-  }
-
-  function handleReset() {
-    setSubject(def.defaultSubject);
-    setBody(def.defaultBody);
-  }
-
-  return (
-    <div className="mt-5 rounded-lg border border-stone-200 bg-white p-5">
-      <label className="mb-1 block text-xs font-medium text-stone-600">Loại thông báo</label>
-      <select value={selectedType} onChange={(e) => selectType(e.target.value)}
-        className="w-full rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm">
-        {EMAIL_TEMPLATE_TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
-      </select>
-
-      <p className="mt-2 text-xs text-stone-400">
-        Biến có thể dùng: {def.placeholders.map((p) => `{${p}}`).join(', ')} — hệ thống sẽ tự thay bằng giá trị thật khi gửi.
-      </p>
-
-      <div className="mt-3">
-        <label className="mb-1 block text-xs font-medium text-stone-600">Tiêu đề email</label>
-        <input value={subject} onChange={(e) => setSubject(e.target.value)} className="w-full rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
-      </div>
-
-      <div className="mt-3">
-        <label className="mb-1 block text-xs font-medium text-stone-600">Nội dung email (có thể dùng thẻ HTML như &lt;b&gt;, &lt;p&gt;)</label>
-        <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={6}
-          className="w-full rounded-md border border-stone-300 px-3 py-1.5 font-mono text-xs" />
-      </div>
-
-      <div className="mt-3 rounded-md border border-dashed border-stone-300 p-3">
-        <div className="text-xs text-stone-400">Xem trước (dữ liệu mẫu):</div>
-        <div className="mt-1 text-sm font-medium text-stone-800">
-          {renderEmailTemplate({ [selectedType]: { subject, body } }, selectedType, Object.fromEntries(def.placeholders.map((p) => [p, p === 'link' ? '#' : `[${p}]`]))).subject}
-        </div>
-        <div className="mt-1 text-sm text-stone-600" dangerouslySetInnerHTML={{
-          __html: renderEmailTemplate({ [selectedType]: { subject, body } }, selectedType, Object.fromEntries(def.placeholders.map((p) => [p, p === 'link' ? '#' : `[${p}]`]))).body,
-        }} />
-      </div>
-
-      <div className="mt-4 flex items-center gap-2">
-        <button onClick={handleSave} disabled={saving}
-          className="flex items-center gap-1.5 rounded-md bg-teal-900 px-4 py-2 text-sm text-white hover:bg-teal-800 disabled:opacity-60">
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          Lưu mẫu này
-        </button>
-        <button onClick={handleReset} className="rounded-md border border-stone-300 px-3 py-2 text-sm text-stone-600 hover:bg-stone-50">
-          Khôi phục mặc định
-        </button>
-        {saveDone && <span className="flex items-center gap-1 text-xs text-teal-700"><CheckCircle2 className="h-3.5 w-3.5" /> Đã lưu.</span>}
-      </div>
     </div>
   );
 }

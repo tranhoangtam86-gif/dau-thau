@@ -1,3 +1,9 @@
 ﻿node_modules
 .env
 dist
+
+# MCP secrets
+.env.mcp
+
+# MCP secrets
+.env.mcp
