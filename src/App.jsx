@@ -1748,7 +1748,9 @@ export default function App() {
       showToast('File không phải định dạng Word .docx hợp lệ (có thể là file .doc cũ hoặc bị lỗi). Hãy mở file bằng Microsoft Word → Lưu thành (Save As) → "Word Document (*.docx)" rồi tải lên lại.', 'error');
       return;
     }
-    const path = `${docType}_${typeKey}.docx`;
+    // Mỗi lần tải lên dùng tên file mới (kèm mốc thời gian) để không bị bộ nhớ đệm trả về mẫu cũ
+    const oldPath = docxTemplates[docType]?.[typeKey]?.storage_path;
+    const path = `${docType}_${typeKey}_${Date.now()}.docx`;
     const { error: uploadError } = await supabase.storage.from('docx-templates').upload(path, file, { upsert: true, contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
     if (uploadError) { showToast('Không thể tải lên file mẫu: ' + uploadError.message, 'error'); return; }
     const { data, error } = await supabase
@@ -1758,8 +1760,9 @@ export default function App() {
       .single();
     if (error) { showToast('Không thể lưu thông tin mẫu: ' + error.message, 'error'); return; }
     setDocxTemplates((prev) => ({ ...prev, [docType]: { ...(prev[docType] || {}), [typeKey]: { storage_path: data.storage_path } } }));
+    if (oldPath && oldPath !== path) { try { await supabase.storage.from('docx-templates').remove([oldPath]); } catch { /* bỏ qua */ } }
     await autoCreateFieldsFromDocx(docType, file, projectTypeId);
-    showToast('Đã tải lên mẫu Word.');
+    showToast('Đã tải lên mẫu Word mới. Hồ sơ đã có toàn văn lưu sẵn sẽ giữ bản cũ — bấm "Tạo lại từ mẫu" trong hồ sơ đó để áp dụng mẫu mới.');
   }
 
   /* quét file Word vừa tải lên, tìm các thẻ {ten_truong} và tự tạo trường nhập liệu tương ứng nếu chưa có */
@@ -1884,7 +1887,8 @@ export default function App() {
   /* ---------------- mẫu file Excel (.xlsx) cho Thu thập báo giá ---------------- */
   async function uploadExcelTemplate(docType, file, projectTypeId) {
     const typeKey = projectTypeId || GENERIC_TYPE_ID;
-    const path = `${docType}_${typeKey}.xlsx`;
+    const oldPath = excelTemplates[docType]?.[typeKey]?.storage_path;
+    const path = `${docType}_${typeKey}_${Date.now()}.xlsx`;
     const { error: uploadError } = await supabase.storage.from('excel-templates').upload(path, file, { upsert: true });
     if (uploadError) { showToast('Không thể tải lên file mẫu Excel: ' + uploadError.message, 'error'); return; }
     const { data, error } = await supabase
@@ -1894,6 +1898,7 @@ export default function App() {
       .single();
     if (error) { showToast('Không thể lưu thông tin mẫu Excel: ' + error.message, 'error'); return; }
     setExcelTemplates((prev) => ({ ...prev, [docType]: { ...(prev[docType] || {}), [typeKey]: { storage_path: data.storage_path } } }));
+    if (oldPath && oldPath !== path) { try { await supabase.storage.from('excel-templates').remove([oldPath]); } catch { /* bỏ qua */ } }
     await autoCreateFieldsFromExcel(docType, file, projectTypeId);
     showToast('Đã tải lên mẫu Excel.');
   }
