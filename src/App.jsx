@@ -199,6 +199,210 @@ function renderEmailTemplate(templates, typeKey, vars) {
   return { subject, html };
 }
 
+
+/* ---------------- Toàn văn biên bản theo file mẫu Word: chuyển .docx -> HTML để xem/sửa ngay trong web ---------------- */
+const AUTO_FILL_KEYS = ['du_an', 'ten_du_an', 'ma_du_an', 'ten_goi_thau', 'ma_goi_thau'];
+
+function sanitizeHtml(html) {
+  const doc = new DOMParser().parseFromString(`<div>${html || ''}</div>`, 'text/html');
+  doc.querySelectorAll('script,style,iframe,object,embed,link,meta,form').forEach((n) => n.remove());
+  doc.querySelectorAll('*').forEach((el) => {
+    Array.from(el.attributes).forEach((a) => {
+      const name = a.name.toLowerCase();
+      const val = (a.value || '').trim().toLowerCase();
+      if (name.startsWith('on') || ((name === 'href' || name === 'src') && val.startsWith('javascript:'))) el.removeAttribute(a.name);
+    });
+  });
+  return doc.body.firstChild ? doc.body.firstChild.innerHTML : '';
+}
+
+function escapeXmlText(t) {
+  return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Bộ chuyển .docx -> HTML (giữ đoạn văn, căn lề, đậm/nghiêng/gạch chân, cỡ chữ, bảng, thụt lề). Không lấy header/footer và hình ảnh.
+function docxToHtml(arrayBuffer) {
+  const zip = new PizZip(arrayBuffer);
+  const docFile = zip.file('word/document.xml');
+  if (!docFile) throw new Error('File Word không hợp lệ (không đọc được nội dung).');
+  const parse = (t) => new DOMParser().parseFromString(t, 'application/xml');
+  const child = (el, name) => (el ? Array.from(el.children).find((c) => c.nodeName === name) : undefined);
+  const kids = (el, name) => (el ? Array.from(el.children).filter((c) => c.nodeName === name) : []);
+  const valOf = (el) => (el ? el.getAttribute('w:val') : null);
+  const isOn = (el) => { const v = valOf(el); return !(v === '0' || v === 'false' || v === 'off'); };
+  const px = (twips) => Math.round((Number(twips) || 0) / 15);
+
+  function readRun(rPr) {
+    const o = {};
+    if (!rPr) return o;
+    const b = child(rPr, 'w:b'); if (b) o.b = isOn(b);
+    const i = child(rPr, 'w:i'); if (i) o.i = isOn(i);
+    const u = child(rPr, 'w:u'); if (u) o.u = valOf(u) !== 'none';
+    const sz = child(rPr, 'w:sz'); if (sz && valOf(sz)) o.sz = Number(valOf(sz)) / 2;
+    return o;
+  }
+  function readPara(pPr) {
+    const o = {};
+    if (!pPr) return o;
+    const jc = valOf(child(pPr, 'w:jc'));
+    if (jc) o.jc = jc === 'both' || jc === 'distribute' ? 'justify' : jc === 'right' || jc === 'end' ? 'right' : jc === 'center' ? 'center' : 'left';
+    const ind = child(pPr, 'w:ind');
+    if (ind) {
+      o.left = px(ind.getAttribute('w:left') || ind.getAttribute('w:start'));
+      o.firstLine = px(ind.getAttribute('w:firstLine'));
+      o.hanging = px(ind.getAttribute('w:hanging'));
+    }
+    const sp = child(pPr, 'w:spacing');
+    if (sp) {
+      if (sp.getAttribute('w:before') != null) o.before = px(sp.getAttribute('w:before'));
+      if (sp.getAttribute('w:after') != null) o.after = px(sp.getAttribute('w:after'));
+    }
+    return o;
+  }
+
+  const styles = {};
+  let defaults = {};
+  const stylesFile = zip.file('word/styles.xml');
+  if (stylesFile) {
+    const sd = parse(stylesFile.asText());
+    const dd = sd.getElementsByTagName('w:docDefaults')[0];
+    if (dd) defaults = readRun(child(child(dd, 'w:rPrDefault'), 'w:rPr'));
+    Array.from(sd.getElementsByTagName('w:style')).forEach((st) => {
+      styles[st.getAttribute('w:styleId')] = {
+        based: valOf(child(st, 'w:basedOn')),
+        run: readRun(child(st, 'w:rPr')),
+        para: readPara(child(st, 'w:pPr')),
+      };
+    });
+  }
+  function resolveStyle(id, depth = 0) {
+    const st = id ? styles[id] : null;
+    if (!st || depth > 6) return { run: {}, para: {} };
+    const base = st.based ? resolveStyle(st.based, depth + 1) : { run: {}, para: {} };
+    return { run: { ...base.run, ...st.run }, para: { ...base.para, ...st.para } };
+  }
+
+  function renderRun(r, baseRun) {
+    const rPr = child(r, 'w:rPr');
+    const rs = valOf(child(rPr, 'w:rStyle'));
+    const props = { ...baseRun, ...resolveStyle(rs).run, ...readRun(rPr) };
+    let text = '';
+    Array.from(r.children).forEach((c) => {
+      if (c.nodeName === 'w:t') text += escapeXmlText(c.textContent);
+      else if (c.nodeName === 'w:tab') text += '&emsp;';
+      else if (c.nodeName === 'w:noBreakHyphen') text += '-';
+      else if (c.nodeName === 'w:br') text += c.getAttribute('w:type') === 'page' ? '<hr style="border:0;border-top:1px dashed #bbb;margin:12px 0">' : '<br>';
+    });
+    if (!text) return '';
+    const css = [];
+    if (props.b) css.push('font-weight:bold');
+    if (props.i) css.push('font-style:italic');
+    if (props.u) css.push('text-decoration:underline');
+    if (props.sz && props.sz !== defaults.sz) css.push(`font-size:${props.sz}pt`);
+    return css.length ? `<span style="${css.join(';')}">${text}</span>` : text;
+  }
+  function renderInline(parent, baseRun) {
+    let out = '';
+    Array.from(parent.children).forEach((c) => {
+      if (c.nodeName === 'w:r') out += renderRun(c, baseRun);
+      else if (['w:hyperlink', 'w:ins', 'w:smartTag', 'w:fldSimple'].includes(c.nodeName)) out += renderInline(c, baseRun);
+      else if (c.nodeName === 'w:sdt') out += renderInline(child(c, 'w:sdtContent') || c, baseRun);
+    });
+    return out;
+  }
+  function renderParagraph(p) {
+    const pPr = child(p, 'w:pPr');
+    const st = resolveStyle(valOf(child(pPr, 'w:pStyle')));
+    const para = { ...st.para, ...readPara(pPr) };
+    let inner = renderInline(p, { ...defaults, ...st.run });
+    if (pPr && child(pPr, 'w:numPr') && inner) inner = '&bull;&nbsp;' + inner;
+    const css = [`margin:${para.before || 0}px 0 ${para.after != null ? para.after : 6}px`];
+    if (para.jc) css.push(`text-align:${para.jc}`);
+    if (para.left) css.push(`margin-left:${para.left}px`);
+    const indent = (para.firstLine || 0) - (para.hanging || 0);
+    if (indent) css.push(`text-indent:${indent}px`);
+    return `<p style="${css.join(';')}">${inner || '<br>'}</p>`;
+  }
+
+  function tableHasBorders(tbl) {
+    const tblPr = child(tbl, 'w:tblPr');
+    const style = valOf(child(tblPr, 'w:tblStyle')) || '';
+    if (/grid/i.test(style)) return true;
+    const real = (el) => el && Array.from(el.children).some((b) => !['nil', 'none'].includes(valOf(b) || 'nil'));
+    if (real(child(tblPr, 'w:tblBorders'))) return true;
+    return Array.from(tbl.getElementsByTagName('w:tcBorders')).some((el) => real(el));
+  }
+  function renderTable(tbl) {
+    const bordered = tableHasBorders(tbl);
+    const gridCols = kids(child(tbl, 'w:tblGrid'), 'w:gridCol').map((g) => Number(g.getAttribute('w:w')) || 0);
+    const gridTotal = gridCols.reduce((a, b) => a + b, 0);
+    const rows = kids(tbl, 'w:tr').map((tr) => {
+      let col = 0;
+      return kids(tr, 'w:tc').map((tc) => {
+        const tcPr = child(tc, 'w:tcPr');
+        const span = Number(valOf(child(tcPr, 'w:gridSpan'))) || 1;
+        const vm = child(tcPr, 'w:vMerge');
+        const cell = { tc, span, start: col, vmerge: vm ? (valOf(vm) === 'restart' ? 'restart' : 'continue') : null, rowspan: 1, skip: false };
+        col += span;
+        return cell;
+      });
+    });
+    rows.forEach((row, ri) => {
+      row.forEach((cell) => {
+        if (cell.vmerge !== 'restart') return;
+        for (let k = ri + 1; k < rows.length; k++) {
+          const next = rows[k].find((c) => c.start === cell.start && c.vmerge === 'continue');
+          if (!next) break;
+          next.skip = true;
+          cell.rowspan += 1;
+        }
+      });
+    });
+    const border = bordered ? 'border:1px solid #000;' : '';
+    let html = '<table style="width:100%;border-collapse:collapse;margin:6px 0">';
+    rows.forEach((row) => {
+      html += '<tr>';
+      row.forEach((cell) => {
+        if (cell.skip) return;
+        let w = '';
+        if (gridTotal > 0) {
+          const sum = gridCols.slice(cell.start, cell.start + cell.span).reduce((a, b) => a + b, 0);
+          if (sum > 0) w = `width:${((sum / gridTotal) * 100).toFixed(1)}%;`;
+        }
+        const attrs = `${cell.span > 1 ? ` colspan="${cell.span}"` : ''}${cell.rowspan > 1 ? ` rowspan="${cell.rowspan}"` : ''}`;
+        html += `<td${attrs} style="${border}${w}padding:3px 5px;vertical-align:top">${renderBlocks(cell.tc)}</td>`;
+      });
+      html += '</tr>';
+    });
+    return html + '</table>';
+  }
+  function renderBlocks(container) {
+    let out = '';
+    Array.from(container.children).forEach((c) => {
+      if (c.nodeName === 'w:p') out += renderParagraph(c);
+      else if (c.nodeName === 'w:tbl') out += renderTable(c);
+      else if (c.nodeName === 'w:sdt') out += renderBlocks(child(c, 'w:sdtContent') || c);
+    });
+    return out;
+  }
+
+  const body = child(parse(docFile.asText()).documentElement, 'w:body');
+  if (!body) throw new Error('File Word không có nội dung.');
+  return renderBlocks(body);
+}
+
+// Xuất bản đã chỉnh sửa trong web thành file Word (.doc) — mở bằng Microsoft Word được
+function exportHtmlAsWord(html, fileTitle) {
+  const full = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${escapeXmlText(fileTitle)}</title><style>@page{size:21cm 29.7cm;margin:2cm} body{font-family:'Times New Roman',serif;font-size:13pt} table{border-collapse:collapse} p{margin:0 0 6pt}</style></head><body>${sanitizeHtml(html)}</body></html>`;
+  const blob = new Blob(['﻿', full], { type: 'application/msword' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${fileTitle || 'bien_ban'}.doc`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 /* ---------------- helper: điền dữ liệu vào mẫu Excel (.xlsx) đã tải lên ---------------- */
 // Thay các ô chứa đúng {ten_truong}, hoặc {ten_truong} nằm chung ô với văn bản khác, bằng dữ liệu thật.
 function fillExcelScalarPlaceholders(ws, mergeData) {
@@ -784,6 +988,26 @@ export default function App() {
   const [formErrors, setFormErrors] = useState({});
   const [confirmingDelete, setConfirmingDelete] = useState(null);
   const [toast, setToast] = useState(null);
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    try { const v = Number(localStorage.getItem('sidebarWidth')); return v >= 200 && v <= 520 ? v : 256; } catch { return 256; }
+  });
+  useEffect(() => { try { localStorage.setItem('sidebarWidth', String(sidebarWidth)); } catch { /* bỏ qua */ } }, [sidebarWidth]);
+  function startSidebarResize(e) {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = sidebarWidth;
+    const onMove = (ev) => setSidebarWidth(Math.min(520, Math.max(200, startW + ev.clientX - startX)));
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    };
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'col-resize';
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }
   const [saving, setSaving] = useState(false);
   const [assigningRecord, setAssigningRecord] = useState(null); // { docType, record } khi đang mở modal giao việc
 
@@ -1505,7 +1729,7 @@ export default function App() {
       const found = [...new Set([...plain.matchAll(/\{([a-zA-Z0-9_]+)\}/g)].map((m) => m[1]))];
       if (found.length === 0) return;
       const schema = getSchema(docType, projectTypeId);
-      const known = new Set(['du_an', ...schema.fields.map((f) => f.name)]);
+      const known = new Set([...AUTO_FILL_KEYS, ...schema.fields.map((f) => f.name)]);
       const missing = found.filter((k) => !known.has(k));
       if (missing.length === 0) return;
       for (const key of missing) {
@@ -1518,27 +1742,38 @@ export default function App() {
     }
   }
 
-  async function exportDocx(docType, record, project) {
+  // Điền dữ liệu hồ sơ vào file mẫu Word, trả về bản docx đã điền (tên dự án, tên/mã gói thầu... tự động điền)
+  async function renderFilledDocx(docType, record, project) {
     const tpl = resolveDocxTemplate(docType, project?.typeId);
-    if (!tpl) { showToast('Chưa có mẫu Word cho loại hồ sơ này.', 'error'); return; }
+    if (!tpl) throw new Error('Chưa có mẫu Word cho loại hồ sơ này.');
+    const { data: fileBlob, error } = await supabase.storage.from('docx-templates').download(tpl.storage_path);
+    if (error) throw error;
+    const arrayBuffer = await fileBlob.arrayBuffer();
+    const zip = new PizZip(arrayBuffer);
+    const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true, nullGetter: () => '' });
+
+    const schema = getSchema(docType, project?.typeId);
+    const mergeData = {
+      du_an: project ? project.ten : '',
+      ten_du_an: project ? project.ten : '',
+      ma_du_an: project ? (project.maDuAn || '') : '',
+      ten_goi_thau: record.tenGoiThau || '',
+      ma_goi_thau: record.maGoiThau || '',
+    };
+    schema.fields.forEach((f) => {
+      let v = record[f.name];
+      if (f.type === 'number') v = formatVND(v);
+      if (f.type === 'date') v = formatDateVN(v);
+      mergeData[f.name] = v ?? '';
+    });
+    doc.render(mergeData);
+    return doc.getZip();
+  }
+
+  async function exportDocx(docType, record, project) {
     try {
-      const { data: fileBlob, error } = await supabase.storage.from('docx-templates').download(tpl.storage_path);
-      if (error) throw error;
-      const arrayBuffer = await fileBlob.arrayBuffer();
-      const zip = new PizZip(arrayBuffer);
-      const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
-
-      const schema = getSchema(docType, project?.typeId);
-      const mergeData = { du_an: project ? project.ten : '' };
-      schema.fields.forEach((f) => {
-        let v = record[f.name];
-        if (f.type === 'number') v = formatVND(v);
-        if (f.type === 'date') v = formatDateVN(v);
-        mergeData[f.name] = v ?? '';
-      });
-
-      doc.render(mergeData);
-      const out = doc.getZip().generate({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+      const zip = await renderFilledDocx(docType, record, project);
+      const out = zip.generate({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
       const title = record.tenGoiThau || record.soHopDong || record.maGoiThau || 'ho_so';
       const url = URL.createObjectURL(out);
       const a = document.createElement('a');
@@ -1549,6 +1784,21 @@ export default function App() {
     } catch (err) {
       showToast('Không thể xuất file Word: ' + (err.message || 'lỗi không xác định. Kiểm tra lại các thẻ {ten_truong} trong file mẫu.'), 'error');
     }
+  }
+
+  // Tạo toàn văn (HTML) từ file mẫu Word + dữ liệu hồ sơ để hiển thị và chỉnh sửa trong web
+  async function generateDocHtml(docType, record, project) {
+    const zip = await renderFilledDocx(docType, record, project);
+    return docxToHtml(zip.generate({ type: 'arraybuffer' }));
+  }
+
+  async function saveDocHtml(typeKey, rec, html) {
+    const { id: _id, duAnId, createdAt, updatedAt, createdBy, locked, ...rest } = rec;
+    const { error } = await supabase.from('documents').update({ data: { ...rest, docHtml: html }, updated_at: new Date().toISOString() }).eq('id', rec.id);
+    if (error) { showToast('Không thể lưu toàn văn: ' + error.message, 'error'); return false; }
+    setRecords((prev) => ({ ...prev, [typeKey]: (prev[typeKey] || []).map((r) => (r.id === rec.id ? { ...r, docHtml: html } : r)) }));
+    showToast('Đã lưu toàn văn.');
+    return true;
   }
 
   /* ---------------- xuất PDF thật (tải file .pdf, không qua hộp thoại in) ---------------- */
@@ -1606,7 +1856,7 @@ export default function App() {
       const found = [...new Set([...plain.matchAll(/\{([a-zA-Z0-9_]+)\}/g)].map((m) => m[1]))].filter((k) => k !== 'hang_muc');
       if (found.length === 0) return;
       const schema = getSchema(docType, projectTypeId);
-      const known = new Set(['du_an', ...schema.fields.map((f) => f.name)]);
+      const known = new Set([...AUTO_FILL_KEYS, ...schema.fields.map((f) => f.name)]);
       const missing = found.filter((k) => !known.has(k));
       if (missing.length === 0) return;
       for (const key of missing) {
@@ -1916,7 +2166,8 @@ export default function App() {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
       body: JSON.stringify(body),
     });
-    const result = await res.json();
+    let result;
+    try { result = await res.json(); } catch { result = { error: `Máy chủ trả về lỗi ${res.status}. Hàm "create-user" trên Supabase có thể chưa được triển khai bản mới.` }; }
     return { ok: res.ok, result };
   }
   async function createUser(email, password, fullName, isAdmin) {
@@ -1963,8 +2214,9 @@ export default function App() {
   }
 
   async function updateUserProfile(userId, fullName) {
-    const { error } = await supabase.from('profiles').update({ full_name: fullName }).eq('id', userId);
+    const { data: updated, error } = await supabase.from('profiles').update({ full_name: fullName }).eq('id', userId).select();
     if (error) { showToast('Không thể cập nhật thông tin: ' + error.message, 'error'); return; }
+    if (!updated || updated.length === 0) { showToast('Không lưu được: Supabase từ chối ghi (thiếu quyền cập nhật bảng profiles). Cần chạy lại policy "Self or admin can update profile".', 'error'); return; }
     setProfiles((prev) => prev.map((p) => (p.id === userId ? { ...p, full_name: fullName } : p)));
     showToast('Đã cập nhật thông tin người dùng.');
     appendLog('update_user_profile', `${myProfile.full_name} đã sửa thông tin người dùng "${fullName}".`);
@@ -2013,7 +2265,7 @@ export default function App() {
       `}</style>
 
       {/* Sidebar */}
-      <aside className="flex w-64 shrink-0 flex-col bg-teal-950 text-teal-50 print:hidden">
+      <aside style={{ width: sidebarWidth }} className="relative flex shrink-0 flex-col bg-teal-950 text-teal-50 print:hidden">
         <div className="border-b border-teal-900 px-5 py-5">
           <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-lg leading-tight">
             Hồ sơ Đấu thầu
@@ -2177,6 +2429,13 @@ export default function App() {
             <LogOut className="h-3 w-3" /> Đăng xuất
           </button>
         </div>
+        {/* Thanh kéo để đổi độ rộng menu trái */}
+        <div
+          onMouseDown={startSidebarResize}
+          onDoubleClick={() => setSidebarWidth(256)}
+          title="Kéo để đổi độ rộng menu (nhấp đúp để đặt lại)"
+          className="absolute right-0 top-0 z-10 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-teal-500/60"
+        />
       </aside>
 
       {/* Main */}
@@ -2219,6 +2478,8 @@ export default function App() {
               project={proj}
               assignment={assignment}
               isReviewer={assignment.reviewerId === myId && assignment.assignedTo !== myId}
+              docxAvailable={['ho_so_yeu_cau', 'bien_ban', 'hop_dong'].includes(assignment.docType) && !!resolveDocxTemplate(assignment.docType, proj?.typeId)}
+              onGenerateDocHtml={(rec) => generateDocHtml(assignment.docType, rec, proj)}
               hasLeader={!!(units.find((u) => u.id === myProfile.unit_id)?.leader_id) && units.find((u) => u.id === myProfile.unit_id).leader_id !== myId}
               assigneeName={nameOf(assignment.assignedTo)}
               onSaveDraft={(patch) => saveAssignmentDraft(assignment, assignment.docType, patch)}
@@ -2288,6 +2549,10 @@ export default function App() {
             onExportDocx={() => exportDocx(activeType, detailRecord, detailProject)}
             onExportPdf={exportPdf}
             onExportExcel={() => exportBaoGiaExcel(getSchema(activeType, detailProject?.typeId), detailRecord, detailProject, activeType, detailProject?.typeId)}
+            onGenerateDocHtml={['ho_so_yeu_cau', 'bien_ban', 'hop_dong'].includes(activeType) && resolveDocxTemplate(activeType, detailProject?.typeId)
+              ? (rec) => generateDocHtml(activeType, rec, detailProject) : undefined}
+            onSaveDocHtml={(html) => saveDocHtml(activeType, detailRecord, html)}
+            onExportFullWord={(html, rec) => exportHtmlAsWord(html, rec.tenGoiThau || rec.soHopDong || rec.maGoiThau || 'ho_so')}
             onAssign={() => setAssigningRecord({ docType: activeType, record: detailRecord })}
             onBack={() => setView('list')}
             onEdit={() => openEditForm(activeType, detailRecord)}
@@ -2418,7 +2683,7 @@ function Dashboard({ records, projects, allProjectsEmpty, amAdmin, projectFilter
     .slice(0, 8);
 
   return (
-    <div className="mx-auto max-w-4xl px-8 py-10">
+    <div className="w-full px-8 py-10">
       <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-2xl text-stone-900">
         Tổng quan hồ sơ đấu thầu
       </div>
@@ -2505,7 +2770,7 @@ function ListView({
   const [showImport, setShowImport] = useState(false);
 
   return (
-    <div className="mx-auto max-w-5xl px-8 py-8">
+    <div className="w-full px-8 py-8">
       <div className="flex items-center justify-between">
         <div>
           <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">
@@ -3088,13 +3353,17 @@ function PackageSelectField({ packages, disabled, value, error, onChange, onCrea
 /* Detail / print view                                                 */
 /* ------------------------------------------------------------------ */
 
-function DetailView({ docType, schema, record, project, canEdit, canDelete, canLock, customLayout, hasDocxTemplate, onExportDocx, onExportPdf, onExportExcel, onAssign, onBack, onEdit, onDelete, onToggleLock, confirmingDelete }) {
+function DetailView({ docType, schema, record, project, canEdit, canDelete, canLock, customLayout, hasDocxTemplate, onExportDocx, onExportPdf, onExportExcel, onGenerateDocHtml, onSaveDocHtml, onExportFullWord, onAssign, onBack, onEdit, onDelete, onToggleLock, confirmingDelete }) {
   const hangMuc = record.hangMuc;
   const dateStr = formatDateVN(record[schema.dateField]);
   const layoutElements = Array.isArray(customLayout) ? customLayout : (customLayout?.elements || []);
   const layoutOrientation = Array.isArray(customLayout) ? 'portrait' : (customLayout?.orientation || 'portrait');
   const hasCustomLayout = layoutElements.length > 0;
   const printRef = useRef(null);
+  const sheetRef = useRef(null);
+  const hasFullDoc = !!onGenerateDocHtml;
+  const [docMode, setDocMode] = useState('full');
+  const fullMode = hasFullDoc && docMode === 'full';
   const [exportingPdf, setExportingPdf] = useState(false);
   const supportsPdfExport = ['bien_ban', 'hop_dong'].includes(docType);
   const supportsExcelExport = docType === 'bao_gia';
@@ -3102,12 +3371,12 @@ function DetailView({ docType, schema, record, project, canEdit, canDelete, canL
   async function handleExportPdf() {
     if (!onExportPdf) return;
     setExportingPdf(true);
-    await onExportPdf(printRef.current, record, layoutOrientation);
+    await onExportPdf(fullMode ? sheetRef.current : printRef.current, record, fullMode ? 'portrait' : layoutOrientation);
     setExportingPdf(false);
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-8 py-8">
+    <div className="w-full px-8 py-8">
       <div className="mb-4 flex items-center justify-between print:hidden">
         <button onClick={onBack} className="flex items-center gap-1 text-sm text-stone-500 hover:text-stone-800">
           <ChevronLeft className="h-4 w-4" /> Quay lại danh sách
@@ -3141,8 +3410,15 @@ function DetailView({ docType, schema, record, project, canEdit, canDelete, canL
               <Trash2 className="h-3.5 w-3.5" /> {confirmingDelete ? 'Xác nhận xóa' : 'Xóa'}
             </button>
           )}
+          {hasFullDoc && (
+            <div className="flex overflow-hidden rounded-md border border-stone-300 text-sm">
+              <button onClick={() => setDocMode('full')} className={`px-3 py-1.5 ${fullMode ? 'bg-teal-900 text-white' : 'text-stone-600 hover:bg-stone-50'}`}>Toàn văn</button>
+              <button onClick={() => setDocMode('summary')} className={`px-3 py-1.5 ${!fullMode ? 'bg-teal-900 text-white' : 'text-stone-600 hover:bg-stone-50'}`}>Tóm tắt</button>
+            </div>
+          )}
           {hasDocxTemplate && (
-            <button onClick={onExportDocx} className="flex items-center gap-1.5 rounded-md border border-teal-800 px-3 py-1.5 text-sm text-teal-900 hover:bg-teal-50">
+            <button onClick={fullMode ? () => onExportFullWord(sheetRef.current ? sheetRef.current.innerHTML : '', record) : onExportDocx}
+              className="flex items-center gap-1.5 rounded-md border border-teal-800 px-3 py-1.5 text-sm text-teal-900 hover:bg-teal-50">
               <FileType2 className="h-3.5 w-3.5" /> Xuất Word
             </button>
           )}
@@ -3168,6 +3444,9 @@ function DetailView({ docType, schema, record, project, canEdit, canDelete, canL
         </div>
       )}
 
+      {fullMode ? (
+        <FullDocEditor key={record.id} sheetRef={sheetRef} initialHtml={record.docHtml} generate={() => onGenerateDocHtml(record)} readOnly={!canEdit} onSave={onSaveDocHtml} />
+      ) : (
       <div ref={printRef}>
       {hasCustomLayout ? (
         <CustomPrintOutput schema={schema} record={record} project={project} elements={layoutElements} orientation={layoutOrientation} />
@@ -3287,6 +3566,7 @@ function DetailView({ docType, schema, record, project, canEdit, canDelete, canL
       </div>
       )}
       </div>
+      )}
     </div>
   );
 }
@@ -3413,7 +3693,7 @@ function AuditLog({ entries }) {
   const filtered = entries.filter((e) => !search || (e.summary + ' ' + e.actor).toLowerCase().includes(search.toLowerCase()));
 
   return (
-    <div className="mx-auto max-w-4xl px-8 py-8">
+    <div className="w-full px-8 py-8">
       <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">Nhật ký hoạt động</div>
       <p className="mt-1 text-sm text-stone-500">Lưu 300 hoạt động gần nhất trên toàn hệ thống.</p>
 
@@ -3518,7 +3798,7 @@ function ProjectsView({
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-8 py-8">
+    <div className="w-full px-8 py-8">
       <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">Dự án</div>
       <p className="mt-1 text-sm text-stone-500">
         Khai báo loại dự án và tạo dự án tại đây. Việc chọn ai được làm gì trong từng dự án thực hiện ở mục "Người dùng".
@@ -4033,7 +4313,7 @@ function UsersView({
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-8 py-8 space-y-6">
+    <div className="w-full px-8 py-8 space-y-6">
       <div>
         <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">Người dùng</div>
         <p className="mt-1 text-sm text-stone-500">Tạo tài khoản và phân quyền chi tiết (Thêm / Xem / Sửa / Khóa / Xóa) theo từng dự án và từng loại hồ sơ.</p>
@@ -4280,7 +4560,7 @@ function TemplateEditorView({ getSchema, projectTypes, customFields, hiddenField
   const currentMode = (templateFieldMode[docType] && templateFieldMode[docType][projectTypeId]) || 'extend';
 
   return (
-    <div className="mx-auto max-w-5xl px-8 py-8">
+    <div className="w-full px-8 py-8">
       <div style={{ fontFamily: 'Georgia, "Iowan Old Style", serif' }} className="text-xl text-stone-900">Tùy chỉnh mẫu</div>
       <p className="mt-1 text-sm text-stone-500">Khai báo thêm trường thông tin và thiết kế bố cục bản in cho từng loại hồ sơ. Có thể tạo mẫu riêng theo từng loại dự án.</p>
 
@@ -4419,7 +4699,8 @@ function DocxTemplateManager({ docType, schema, existing, onUpload }) {
         <p className="mt-1 text-xs text-stone-400">
           Tải lên file Word có sẵn của công ty. Trong file, đặt các thẻ dạng <span className="font-mono">{'{ten_truong}'}</span> tại vị trí muốn chèn dữ liệu
           (ví dụ <span className="font-mono">{'{ten_goi_thau}'}</span>). Sau khi tải lên, hệ thống sẽ tự quét file và tự tạo luôn các trường nhập liệu
-          cho những thẻ chưa có — không cần khai báo tay lại ở tab "Trường thông tin".
+          cho những thẻ chưa có — không cần khai báo tay lại ở tab "Trường thông tin". Các thẻ <span className="font-mono">{'{du_an}'}</span>, <span className="font-mono">{'{ten_goi_thau}'}</span>
+          và <span className="font-mono">{'{ma_goi_thau}'}</span> được hệ thống tự điền sẵn. Khi tạo hồ sơ, toàn bộ nội dung file mẫu hiện ra để xem và chỉnh sửa ngay trong web.
         </p>
         {existing && (
           <div className="mt-2 flex items-center gap-1.5 text-xs text-teal-700">
@@ -4440,6 +4721,14 @@ function DocxTemplateManager({ docType, schema, existing, onUpload }) {
           <div className="flex items-center justify-between py-1.5">
             <span className="text-stone-600">Tên dự án</span>
             <span className="rounded bg-stone-100 px-1.5 py-0.5 font-mono text-xs text-stone-700">{'{du_an}'}</span>
+          </div>
+          <div className="flex items-center justify-between py-1.5">
+            <span className="text-stone-600">Tên gói thầu (tự điền)</span>
+            <span className="rounded bg-stone-100 px-1.5 py-0.5 font-mono text-xs text-stone-700">{'{ten_goi_thau}'}</span>
+          </div>
+          <div className="flex items-center justify-between py-1.5">
+            <span className="text-stone-600">Mã gói thầu (tự điền)</span>
+            <span className="rounded bg-stone-100 px-1.5 py-0.5 font-mono text-xs text-stone-700">{'{ma_goi_thau}'}</span>
           </div>
           {schema.fields.filter((f) => f.type !== 'items' && f.type !== 'table').map((f) => (
             <div key={f.name} className="flex items-center justify-between py-1.5">
@@ -4476,7 +4765,7 @@ function UnitsView({ units, profiles, onCreateUnit, onSetLeader, onDeleteUnit, o
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-8 py-8">
+    <div className="w-full px-8 py-8">
       <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-xl text-stone-900">Đơn vị &amp; lãnh đạo</div>
       <p className="mt-1 text-sm text-stone-500">
         Khi người được giao việc điền xong, email xác nhận sẽ gửi đến lãnh đạo đơn vị của họ; lãnh đạo xác nhận xong thì email gửi lại cho người giao việc.
@@ -4537,6 +4826,88 @@ function UnitsView({ units, profiles, onCreateUnit, onSetLeader, onDeleteUnit, o
   );
 }
 
+/* ---------------- Soạn thảo toàn văn biên bản theo mẫu (xem + chỉnh sửa ngay trong web) ---------------- */
+
+function FullDocEditor({ initialHtml, generate, readOnly, onSave, onChange, sheetRef }) {
+  const localRef = useRef(null);
+  const ref = sheetRef || localRef;
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+
+  async function load(force) {
+    setLoading(true);
+    setError('');
+    try {
+      let html = initialHtml;
+      const generated = force || !html;
+      if (generated) html = await generate();
+      if (ref.current) ref.current.innerHTML = sanitizeHtml(html);
+      if (generated && onChange && ref.current) onChange(ref.current.innerHTML);
+      setDirty(!!force);
+    } catch (err) {
+      setError(err.message || 'Không thể tạo toàn văn từ file mẫu. Kiểm tra lại các thẻ {ten_truong} trong file mẫu Word.');
+    }
+    setLoading(false);
+  }
+  useEffect(() => { load(false); /* eslint-disable-next-line */ }, []);
+
+  function exec(cmd) { document.execCommand(cmd, false, null); if (ref.current) { setDirty(true); onChange && onChange(ref.current.innerHTML); } }
+  function handleInput() { setDirty(true); onChange && ref.current && onChange(ref.current.innerHTML); }
+  async function handleSave() {
+    setSaving(true);
+    const ok = await onSave(ref.current.innerHTML);
+    if (ok !== false) setDirty(false);
+    setSaving(false);
+  }
+  function handleRegenerate() {
+    if (dirty && !window.confirm('Nội dung bạn đã sửa sẽ bị thay bằng bản tạo lại từ file mẫu và dữ liệu hiện tại. Tiếp tục?')) return;
+    load(true);
+  }
+
+  const tb = 'rounded border border-stone-300 bg-white px-2 py-1 text-xs text-stone-700 hover:bg-stone-50';
+  const keep = (e) => e.preventDefault();
+  return (
+    <div>
+      <div className="mb-2 flex flex-wrap items-center gap-1.5 print:hidden">
+        {!readOnly && (
+          <>
+            <button type="button" onMouseDown={keep} onClick={() => exec('bold')} className={`${tb} font-bold`}>B</button>
+            <button type="button" onMouseDown={keep} onClick={() => exec('italic')} className={`${tb} italic`}>I</button>
+            <button type="button" onMouseDown={keep} onClick={() => exec('underline')} className={`${tb} underline`}>U</button>
+            <button type="button" onMouseDown={keep} onClick={() => exec('justifyLeft')} className={tb}>Trái</button>
+            <button type="button" onMouseDown={keep} onClick={() => exec('justifyCenter')} className={tb}>Giữa</button>
+            <button type="button" onMouseDown={keep} onClick={() => exec('justifyRight')} className={tb}>Phải</button>
+            <button type="button" onMouseDown={keep} onClick={() => exec('insertUnorderedList')} className={tb}>• Danh sách</button>
+            <button type="button" onMouseDown={keep} onClick={() => exec('undo')} className={tb}>Hoàn tác</button>
+            <button type="button" onMouseDown={keep} onClick={handleRegenerate} className={tb}>Tạo lại từ mẫu</button>
+          </>
+        )}
+        {!readOnly && onSave && (
+          <button type="button" onClick={handleSave} disabled={saving || loading}
+            className="ml-auto flex items-center gap-1.5 rounded-md bg-teal-900 px-3 py-1 text-xs text-white hover:bg-teal-800 disabled:opacity-60">
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Lưu toàn văn{dirty ? ' *' : ''}
+          </button>
+        )}
+        {readOnly && <span className="text-xs text-stone-400">Chỉ xem — bạn không có quyền sửa nội dung này.</span>}
+      </div>
+      {loading && (
+        <div className="mb-2 flex items-center gap-2 text-sm text-stone-500 print:hidden"><Loader2 className="h-4 w-4 animate-spin" /> Đang tạo toàn văn từ file mẫu…</div>
+      )}
+      {error && <div className="mb-2 rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700 print:hidden">{error}</div>}
+      <div
+        ref={ref}
+        contentEditable={!readOnly && !loading}
+        suppressContentEditableWarning
+        onInput={handleInput}
+        className="min-h-[500px] w-full rounded-lg border border-stone-200 bg-white p-10 text-stone-900 shadow-sm outline-none focus:ring-2 focus:ring-teal-700/30 print:border-0 print:p-0 print:shadow-none"
+        style={{ fontFamily: '"Times New Roman", Times, serif', fontSize: '13pt', lineHeight: 1.4 }}
+      />
+    </div>
+  );
+}
+
 /* ---------------- Cấu hình mẫu email thông báo ---------------- */
 
 function EmailTemplatesEditor({ templates, onSave }) {
@@ -4572,7 +4943,7 @@ function EmailTemplatesEditor({ templates, onSave }) {
   const preview = renderEmailTemplate({ [typeKey]: { subject, body } }, typeKey, def.sample);
 
   return (
-    <div className="mx-auto max-w-5xl px-8 py-8">
+    <div className="w-full px-8 py-8">
       <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-xl text-stone-900">Mẫu email thông báo</div>
       <p className="mt-1 text-sm text-stone-500">Chỉnh tiêu đề và nội dung email gửi tự động cho từng loại thông báo. Dùng các thẻ trong ngoặc nhọn để chèn dữ liệu thật.</p>
 
@@ -5311,7 +5682,7 @@ function MyAssignmentsView({ assignments, myId, records, nameOf, onOpen }) {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-8 py-8">
+    <div className="w-full px-8 py-8">
       <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-xl text-stone-900">Nhiệm vụ của tôi</div>
       <p className="mt-1 text-sm text-stone-500">Phần thông tin bạn được giao điền, và phần lãnh đạo đơn vị cần xác nhận.</p>
 
@@ -5337,7 +5708,7 @@ function MyAssignmentsView({ assignments, myId, records, nameOf, onOpen }) {
 /* Màn hình điền thông tin được giao + xem trước + xác nhận             */
 /* ------------------------------------------------------------------ */
 
-function AssignmentFillView({ schema, record, project, assignment, isReviewer, hasLeader, assigneeName, onSaveDraft, onComplete, onApprove, onBack }) {
+function AssignmentFillView({ schema, record, project, assignment, isReviewer, hasLeader, assigneeName, docxAvailable, onGenerateDocHtml, onSaveDraft, onComplete, onApprove, onBack }) {
   const [values, setValues] = useState(() => {
     const init = {};
     assignment.fieldKeys.forEach((k) => {
@@ -5348,6 +5719,8 @@ function AssignmentFillView({ schema, record, project, assignment, isReviewer, h
     return init;
   });
   const [showPreview, setShowPreview] = useState(false);
+  const [showDoc, setShowDoc] = useState(false);
+  const [docHtml, setDocHtml] = useState(null);
   const [saving, setSaving] = useState(false);
   const [completing, setCompleting] = useState(false);
   const isDone = assignment.status === 'completed';
@@ -5362,7 +5735,7 @@ function AssignmentFillView({ schema, record, project, assignment, isReviewer, h
 
   async function handleSaveDraft() {
     setSaving(true);
-    await onSaveDraft(values);
+    await onSaveDraft(docHtml != null ? { ...values, docHtml } : values);
     setSaving(false);
   }
 
@@ -5371,16 +5744,16 @@ function AssignmentFillView({ schema, record, project, assignment, isReviewer, h
     if (isReviewer) {
       await onApprove();
     } else {
-      const ok = await onSaveDraft(values);
+      const ok = await onSaveDraft(docHtml != null ? { ...values, docHtml } : values);
       if (ok !== false) await onComplete();
     }
     setCompleting(false);
   }
 
-  const previewRecord = { ...record, ...values };
+  const previewRecord = { ...record, ...values, ...(docHtml != null ? { docHtml } : {}) };
 
   return (
-    <div className="mx-auto max-w-3xl px-8 py-8">
+    <div className="w-full px-8 py-8">
       <button onClick={onBack} className="mb-4 flex items-center gap-1 text-sm text-stone-500 hover:text-stone-800">
         <ChevronLeft className="h-4 w-4" /> Quay lại danh sách nhiệm vụ
       </button>
@@ -5425,6 +5798,31 @@ function AssignmentFillView({ schema, record, project, assignment, isReviewer, h
             ))}
           </div>
 
+          {docxAvailable && (
+            <div className="mt-6 border-t border-stone-200 pt-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-medium text-stone-700">Toàn văn biên bản theo file mẫu</div>
+                  <div className="text-xs text-stone-400">Xem toàn bộ văn bản (đã tự điền tên dự án, gói thầu và các thông tin đã nhập) và chỉnh sửa trực tiếp trên toàn bộ nội dung.</div>
+                </div>
+                <button onClick={() => setShowDoc((v) => !v)}
+                  className="rounded-md border border-teal-800 px-3 py-1.5 text-sm text-teal-900 hover:bg-teal-50">
+                  {showDoc ? 'Thu gọn' : (isReadOnly ? 'Xem toàn văn' : 'Xem & chỉnh sửa toàn văn')}
+                </button>
+              </div>
+              {showDoc && (
+                <div className="mt-3">
+                  <FullDocEditor
+                    initialHtml={docHtml ?? record.docHtml}
+                    generate={() => onGenerateDocHtml({ ...record, ...values })}
+                    readOnly={isReadOnly}
+                    onChange={setDocHtml}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="mt-6 flex items-center justify-end gap-2 border-t border-stone-200 pt-5">
             {!isReadOnly && (
               <button onClick={handleSaveDraft} disabled={saving}
@@ -5448,6 +5846,7 @@ function AssignmentFillView({ schema, record, project, assignment, isReviewer, h
             canEdit={false}
             canDelete={false}
             canLock={false}
+            onGenerateDocHtml={docxAvailable ? (rec) => onGenerateDocHtml(rec) : undefined}
             onBack={() => setShowPreview(false)}
             onEdit={() => {}}
             onDelete={() => {}}
@@ -5455,7 +5854,7 @@ function AssignmentFillView({ schema, record, project, assignment, isReviewer, h
             confirmingDelete={false}
           />
           {!isDone && !isWaitingOnLeader && (
-            <div className="mx-auto mt-4 flex max-w-3xl justify-end gap-2 px-8 print:hidden">
+            <div className="mt-4 flex w-full justify-end gap-2 px-8 print:hidden">
               <button onClick={() => setShowPreview(false)} className="rounded-md border border-stone-300 px-4 py-2 text-sm text-stone-600 hover:bg-stone-50">
                 Quay lại chỉnh sửa
               </button>
