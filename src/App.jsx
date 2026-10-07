@@ -176,11 +176,19 @@ const EMAIL_TEMPLATE_TYPES = [
   },
   {
     key: 'assignment_approved',
-    label: 'Bước 3 — Lãnh đạo đã xác nhận, gửi lại người giao việc',
-    defaultSubject: '{nguoi_duyet} đã xác nhận phần điền thông tin: {ten_ho_so}',
-    defaultBody: '<p>{nguoi_duyet} đã xác nhận phần thông tin do {nguoi_dien} điền trong hồ sơ "<b>{ten_ho_so}</b>". Hồ sơ đã sẵn sàng để bạn kiểm tra và hoàn thiện.</p>',
-    placeholders: [['{nguoi_duyet}', 'Tên lãnh đạo xác nhận'], ['{nguoi_dien}', 'Tên người đã điền thông tin'], ['{ten_ho_so}', 'Tên hồ sơ']],
-    sample: { nguoi_duyet: 'Lê Văn C', nguoi_dien: 'Trần Thị B', ten_ho_so: 'Gói thầu mua sắm thiết bị' },
+    label: 'Bước 3 — Lãnh đạo đã xác nhận, gửi người giao việc và người nhận',
+    defaultSubject: '{nguoi_duyet} đã xác nhận hồ sơ: {ten_ho_so}',
+    defaultBody: '<p>{nguoi_duyet} đã xác nhận nội dung hồ sơ "<b>{ten_ho_so}</b>" do {nguoi_dien} thực hiện (người giao việc: {nguoi_giao}).</p>\n<p>Từ lúc này chỉ người giao việc được sửa hồ sơ. Nếu người giao việc sửa tiếp, bản sửa sẽ được gửi lại lãnh đạo để xác nhận lại.</p>\n<p><a href="{link}">Bấm vào đây để xem hồ sơ</a></p>',
+    placeholders: [['{nguoi_duyet}', 'Tên lãnh đạo xác nhận'], ['{nguoi_dien}', 'Tên người nhận việc đã điền'], ['{nguoi_giao}', 'Tên người giao việc'], ['{ten_ho_so}', 'Tên hồ sơ'], ['{link}', 'Đường dẫn mở hồ sơ']],
+    sample: { nguoi_duyet: 'Lê Văn C', nguoi_dien: 'Trần Thị B', nguoi_giao: 'Nguyễn Văn A', ten_ho_so: 'Gói thầu mua sắm thiết bị', link: 'https://dauthau.app/?assignment=demo' },
+  },
+  {
+    key: 'assignment_resubmitted',
+    label: 'Bước 4 — Người giao việc sửa lại, gửi lãnh đạo xác nhận lại',
+    defaultSubject: '{nguoi_giao} đã sửa hồ sơ, đề nghị bạn xác nhận lại: {ten_ho_so}',
+    defaultBody: '<p>{nguoi_giao} đã chỉnh sửa hồ sơ "<b>{ten_ho_so}</b>" (do {nguoi_dien} thực hiện) sau khi bạn xác nhận và gửi bạn xác nhận lại.</p>\n<p><a href="{link}">Bấm vào đây để xem và xác nhận</a></p>',
+    placeholders: [['{nguoi_giao}', 'Tên người giao việc đã sửa'], ['{nguoi_dien}', 'Tên người nhận việc'], ['{ten_ho_so}', 'Tên hồ sơ'], ['{link}', 'Đường dẫn mở thẳng màn hình xác nhận']],
+    sample: { nguoi_giao: 'Nguyễn Văn A', nguoi_dien: 'Trần Thị B', ten_ho_so: 'Gói thầu mua sắm thiết bị', link: 'https://dauthau.app/?assignment=demo' },
   },
 ];
 function escapeHtml(v) {
@@ -2068,19 +2076,38 @@ export default function App() {
     appendLog('complete_assignment', `${myProfile.full_name} đã hoàn thành phần điền thông tin được giao trong hồ sơ "${title}".`);
   }
 
-  // Lãnh đạo đơn vị bấm "Xác nhận" (bước 3): hoàn thành và gửi email cho người giao việc
+  // Lãnh đạo đơn vị bấm "Xác nhận" (bước 3): hoàn thành, gửi email cho người giao việc VÀ người nhận việc. Từ đây chỉ người giao được sửa.
   async function approveAssignment(assignment, typeKey, recordTitle) {
     const title = recordTitle || DOC_TYPES[typeKey].label;
     const now = new Date().toISOString();
     const { error } = await supabase.from('document_assignments').update({ status: 'completed', completed_at: now }).eq('id', assignment.id);
     if (error) { showToast('Không thể xác nhận: ' + error.message, 'error'); return; }
     setMyAssignments((prev) => prev.map((a) => (a.id === assignment.id ? { ...a, status: 'completed', completedAt: now } : a)));
+    const link = `${window.location.origin}${window.location.pathname}?assignment=${assignment.id}`;
     const mail = renderEmailTemplate(emailTemplates, 'assignment_approved', {
-      nguoi_duyet: myProfile.full_name, nguoi_dien: nameOf(assignment.assignedTo), ten_ho_so: title,
+      nguoi_duyet: myProfile.full_name, nguoi_dien: nameOf(assignment.assignedTo), nguoi_giao: nameOf(assignment.assignedBy), ten_ho_so: title, link,
     });
-    const ok = await sendNotificationEmail(assignment.assignedBy, mail.subject, mail.html);
-    if (ok) showToast('Đã xác nhận và gửi email cho người giao việc.');
-    appendLog('approve_assignment', `${myProfile.full_name} đã xác nhận phần điền thông tin của "${nameOf(assignment.assignedTo)}" trong hồ sơ "${title}".`);
+    const recipients = Array.from(new Set([assignment.assignedBy, assignment.assignedTo].filter((id) => id && id !== myId)));
+    const results = await Promise.all(recipients.map((id) => sendNotificationEmail(id, mail.subject, mail.html)));
+    if (results.every(Boolean)) showToast('Đã xác nhận và gửi email cho người giao việc và người nhận việc.');
+    appendLog('approve_assignment', `${myProfile.full_name} đã xác nhận hồ sơ "${title}" do "${nameOf(assignment.assignedTo)}" thực hiện.`);
+  }
+
+  // Người giao việc sửa lại hồ sơ đã được xác nhận: gửi lại lãnh đạo xác nhận lại (nếu không có lãnh đạo thì chỉ lưu)
+  async function resubmitAssignment(assignment, typeKey, recordTitle) {
+    const title = recordTitle || DOC_TYPES[typeKey].label;
+    if (!assignment.reviewerId) { showToast('Đã lưu thay đổi.'); return; }
+    const now = new Date().toISOString();
+    const { error } = await supabase.from('document_assignments').update({ status: 'submitted', submitted_at: now }).eq('id', assignment.id);
+    if (error) { showToast('Không thể gửi lãnh đạo xác nhận lại: ' + error.message, 'error'); return; }
+    setMyAssignments((prev) => prev.map((a) => (a.id === assignment.id ? { ...a, status: 'submitted', submittedAt: now } : a)));
+    const link = `${window.location.origin}${window.location.pathname}?assignment=${assignment.id}`;
+    const mail = renderEmailTemplate(emailTemplates, 'assignment_resubmitted', {
+      nguoi_giao: myProfile.full_name, nguoi_dien: nameOf(assignment.assignedTo), ten_ho_so: title, link,
+    });
+    const ok = await sendNotificationEmail(assignment.reviewerId, mail.subject, mail.html);
+    if (ok) showToast(`Đã gửi lãnh đạo (${nameOf(assignment.reviewerId)}) xác nhận lại.`);
+    appendLog('resubmit_assignment', `${myProfile.full_name} đã sửa hồ sơ "${title}" và gửi lãnh đạo "${nameOf(assignment.reviewerId)}" xác nhận lại.`);
   }
 
   /* ---------------- đơn vị & lãnh đạo (admin) ---------------- */
@@ -2484,7 +2511,7 @@ export default function App() {
 
         {view === 'my-assignments' && (
           <MyAssignmentsView
-            assignments={myAssignments.filter((a) => a.assignedTo === myId || a.reviewerId === myId)}
+            assignments={myAssignments.filter((a) => a.assignedTo === myId || a.reviewerId === myId || a.assignedBy === myId)}
             myId={myId}
             records={records}
             nameOf={nameOf}
@@ -2499,13 +2526,19 @@ export default function App() {
             return <div className="p-10 text-center text-stone-400">Không tìm thấy nhiệm vụ này (có thể đã bị xóa).</div>;
           }
           const proj = projectById(projects, rec.duAnId);
+          const stillReviewer = assignment.reviewerId === myId && assignment.assignedTo !== myId;
+          const canEditAssignment = (assignment.status === 'pending' && assignment.assignedTo === myId)
+            || (assignment.status === 'submitted' && stillReviewer)
+            || (assignment.status === 'completed' && assignment.assignedBy === myId);
+          const viewerRole = stillReviewer ? 'reviewer' : (assignment.assignedBy === myId && assignment.assignedTo !== myId) ? 'assigner' : 'assignee';
           return (
             <AssignmentFillView
               schema={getSchema(assignment.docType, proj?.typeId)}
               record={rec}
               project={proj}
               assignment={assignment}
-              isReviewer={assignment.reviewerId === myId && assignment.assignedTo !== myId}
+              canEdit={canEditAssignment}
+              viewerRole={viewerRole}
               docxAvailable={['ho_so_yeu_cau', 'bien_ban', 'hop_dong'].includes(assignment.docType) && !!resolveDocxTemplate(assignment.docType, proj?.typeId)}
               onGenerateDocHtml={(rec) => generateDocHtml(assignment.docType, rec, proj)}
               hasLeader={!!(units.find((u) => u.id === myProfile.unit_id)?.leader_id) && units.find((u) => u.id === myProfile.unit_id).leader_id !== myId}
@@ -2513,6 +2546,7 @@ export default function App() {
               onSaveDraft={(patch) => saveAssignmentDraft(assignment, assignment.docType, patch)}
               onComplete={() => completeAssignment(assignment, assignment.docType, rec.tenGoiThau || rec.soHopDong || rec.maGoiThau)}
               onApprove={() => approveAssignment(assignment, assignment.docType, rec.tenGoiThau || rec.soHopDong || rec.maGoiThau)}
+              onResubmit={() => resubmitAssignment(assignment, assignment.docType, rec.tenGoiThau || rec.soHopDong || rec.maGoiThau)}
               onBack={() => setView('my-assignments')}
             />
           );
@@ -5680,17 +5714,20 @@ function AssignFieldsModal({ schema, profiles, onClose, onAssign }) {
 /* ------------------------------------------------------------------ */
 
 function MyAssignmentsView({ assignments, myId, records, nameOf, onOpen }) {
+  // Mỗi nhiệm vụ rơi vào đúng một nhóm theo vai trò của tôi và trạng thái hiện tại
   const needsFill = assignments.filter((a) => a.assignedTo === myId && a.status === 'pending');
-  const needsMyReview = assignments.filter((a) => a.reviewerId === myId && a.assignedTo !== myId && a.status === 'submitted');
-  const waitingOnLeader = assignments.filter((a) => a.assignedTo === myId && a.status === 'submitted');
-  const completed = assignments.filter((a) => a.status === 'completed');
+  const needsMyReview = assignments.filter((a) => a.status === 'submitted' && a.reviewerId === myId && a.assignedTo !== myId);
+  const assignerCanEdit = assignments.filter((a) => a.status === 'completed' && a.assignedBy === myId);
+  const waiting = assignments.filter((a) => a.status === 'submitted' && a.reviewerId !== myId && (a.assignedTo === myId || a.assignedBy === myId));
+  const assignedPending = assignments.filter((a) => a.status === 'pending' && a.assignedBy === myId && a.assignedTo !== myId);
+  const completed = assignments.filter((a) => a.status === 'completed' && a.assignedBy !== myId);
 
   function titleOf(a) {
     const rec = (records[a.docType] || []).find((r) => r.id === a.documentId);
     return rec ? (rec.tenGoiThau || rec.soHopDong || rec.maGoiThau || '(không có tiêu đề)') : '(hồ sơ đã bị xóa)';
   }
 
-  function Section({ title, items, badge, badgeClass, empty, clickable = true, sub }) {
+  function Section({ title, items, badge, badgeClass, empty, sub }) {
     return (
       <div className="mt-6 first:mt-5">
         <div className="text-xs font-medium uppercase tracking-wide text-stone-400">{title}</div>
@@ -5713,21 +5750,29 @@ function MyAssignmentsView({ assignments, myId, records, nameOf, onOpen }) {
   return (
     <div className="w-full px-8 py-8">
       <div style={{ fontFamily: '"Lora", Georgia, serif' }} className="text-xl text-stone-900">Nhiệm vụ của tôi</div>
-      <p className="mt-1 text-sm text-stone-500">Phần thông tin bạn được giao điền, và phần lãnh đạo đơn vị cần xác nhận.</p>
+      <p className="mt-1 text-sm text-stone-500">Người nhận điền và sửa toàn văn → lãnh đạo đơn vị sửa và xác nhận → sau xác nhận chỉ người giao việc được sửa (sửa xong gửi lãnh đạo xác nhận lại).</p>
 
       {needsMyReview.length > 0 && (
         <Section title="Chờ tôi xác nhận (lãnh đạo)" items={needsMyReview} badge="Chờ xác nhận" badgeClass="bg-sky-100 text-sky-800"
-          empty="" sub={(a) => `${nameOf(a.assignedTo)} đã điền xong`} />
+          empty="" sub={(a) => (a.assignedBy === a.reviewerId ? 'gửi xác nhận lại' : `${nameOf(a.assignedTo)} đã điền xong`)} />
       )}
-      <Section title="Đang chờ điền" items={needsFill} badge="Chờ điền" badgeClass="bg-amber-100 text-amber-800"
+      <Section title="Đang chờ tôi điền" items={needsFill} badge="Chờ điền" badgeClass="bg-amber-100 text-amber-800"
         empty="Không có nhiệm vụ nào đang chờ." sub={(a) => `${a.fieldKeys.length} trường cần điền`} />
-      {waitingOnLeader.length > 0 && (
-        <Section title="Đã gửi lãnh đạo, chờ xác nhận" items={waitingOnLeader} badge="Chờ lãnh đạo" badgeClass="bg-violet-100 text-violet-800"
+      {assignerCanEdit.length > 0 && (
+        <Section title="Đã xác nhận — tôi (người giao việc) được sửa" items={assignerCanEdit} badge="Được sửa" badgeClass="bg-emerald-100 text-emerald-800"
+          empty="" sub={(a) => `${nameOf(a.assignedTo)} thực hiện · sửa xong sẽ gửi lãnh đạo xác nhận lại`} />
+      )}
+      {waiting.length > 0 && (
+        <Section title="Đang chờ lãnh đạo xác nhận" items={waiting} badge="Chờ lãnh đạo" badgeClass="bg-violet-100 text-violet-800"
           empty="" sub={(a) => `lãnh đạo: ${nameOf(a.reviewerId)}`} />
       )}
+      {assignedPending.length > 0 && (
+        <Section title="Tôi đã giao, đang chờ người nhận điền" items={assignedPending} badge="Chờ điền" badgeClass="bg-amber-100 text-amber-800"
+          empty="" sub={(a) => `người nhận: ${nameOf(a.assignedTo)}`} />
+      )}
       {completed.length > 0 && (
-        <Section title="Đã hoàn thành" items={completed} badge="Hoàn thành" badgeClass="bg-teal-100 text-teal-800"
-          empty="" sub={() => 'đã xác nhận'} />
+        <Section title="Đã hoàn thành (chỉ người giao việc được sửa)" items={completed} badge="Hoàn thành" badgeClass="bg-teal-100 text-teal-800"
+          empty="" sub={() => 'đã được lãnh đạo xác nhận'} />
       )}
     </div>
   );
@@ -5737,7 +5782,7 @@ function MyAssignmentsView({ assignments, myId, records, nameOf, onOpen }) {
 /* Màn hình điền thông tin được giao + xem trước + xác nhận             */
 /* ------------------------------------------------------------------ */
 
-function AssignmentFillView({ schema, record, project, assignment, isReviewer, hasLeader, assigneeName, docxAvailable, onGenerateDocHtml, onSaveDraft, onComplete, onApprove, onBack }) {
+function AssignmentFillView({ schema, record, project, assignment, canEdit, viewerRole, hasLeader, assigneeName, docxAvailable, onGenerateDocHtml, onSaveDraft, onComplete, onApprove, onResubmit, onBack }) {
   const [values, setValues] = useState(() => {
     const init = {};
     assignment.fieldKeys.forEach((k) => {
@@ -5752,9 +5797,8 @@ function AssignmentFillView({ schema, record, project, assignment, isReviewer, h
   const [docHtml, setDocHtml] = useState(null);
   const [saving, setSaving] = useState(false);
   const [completing, setCompleting] = useState(false);
-  const isDone = assignment.status === 'completed';
-  const isWaitingOnLeader = assignment.status === 'submitted' && !isReviewer;
-  const isReadOnly = isDone || isWaitingOnLeader || isReviewer;
+  const status = assignment.status;
+  const isReadOnly = !canEdit;
 
   const fields = schema.fields.filter((f) => assignment.fieldKeys.includes(f.name));
 
@@ -5770,11 +5814,11 @@ function AssignmentFillView({ schema, record, project, assignment, isReviewer, h
 
   async function handleConfirm() {
     setCompleting(true);
-    if (isReviewer) {
-      await onApprove();
-    } else {
-      const ok = await onSaveDraft(docHtml != null ? { ...values, docHtml } : values);
-      if (ok !== false) await onComplete();
+    const ok = await onSaveDraft(docHtml != null ? { ...values, docHtml } : values);
+    if (ok !== false) {
+      if (status === 'submitted') await onApprove();
+      else if (status === 'completed') await onResubmit();
+      else await onComplete();
     }
     setCompleting(false);
   }
@@ -5792,19 +5836,29 @@ function AssignmentFillView({ schema, record, project, assignment, isReviewer, h
       </div>
       {project && <p className="mt-1 text-sm text-stone-500">Dự án: {project.ten}</p>}
 
-      {isDone && (
+      {status === 'completed' && canEdit && (
+        <div className="mt-3 flex items-center gap-2 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          <CheckCircle2 className="h-4 w-4" /> Lãnh đạo đã xác nhận. Từ lúc này chỉ bạn (người giao việc) được sửa; sửa xong bản chỉnh sửa sẽ được gửi lại lãnh đạo để xác nhận lại.
+        </div>
+      )}
+      {status === 'completed' && !canEdit && (
         <div className="mt-3 flex items-center gap-2 rounded-md bg-teal-50 px-3 py-2 text-sm text-teal-800">
-          <CheckCircle2 className="h-4 w-4" /> Phần này đã được xác nhận hoàn thành.
+          <CheckCircle2 className="h-4 w-4" /> Hồ sơ đã được lãnh đạo xác nhận. Chỉ người giao việc được sửa tiếp.
         </div>
       )}
-      {isWaitingOnLeader && (
-        <div className="mt-3 flex items-center gap-2 rounded-md bg-violet-50 px-3 py-2 text-sm text-violet-800">
-          <Send className="h-4 w-4" /> Bạn đã gửi lãnh đạo đơn vị xác nhận, đang chờ phản hồi.
-        </div>
-      )}
-      {isReviewer && !isDone && (
+      {status === 'submitted' && canEdit && (
         <div className="mt-3 flex items-center gap-2 rounded-md bg-sky-50 px-3 py-2 text-sm text-sky-800">
-          <ClipboardCheck className="h-4 w-4" /> {assigneeName} đã điền xong phần này. Xem lại thông tin rồi bấm "Xem trước" để xác nhận.
+          <ClipboardCheck className="h-4 w-4" /> {assignment.assignedBy === assignment.reviewerId || viewerRole !== 'reviewer' ? 'Hồ sơ' : `${assigneeName} đã điền xong. Hồ sơ`} đang chờ bạn xác nhận. Bạn có thể xem và sửa trực tiếp (kể cả trên toàn văn) rồi xác nhận.
+        </div>
+      )}
+      {status === 'submitted' && !canEdit && (
+        <div className="mt-3 flex items-center gap-2 rounded-md bg-violet-50 px-3 py-2 text-sm text-violet-800">
+          <Send className="h-4 w-4" /> Đã gửi lãnh đạo đơn vị, đang chờ xác nhận. Lúc này chưa thể sửa.
+        </div>
+      )}
+      {status === 'pending' && !canEdit && (
+        <div className="mt-3 flex items-center gap-2 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <Send className="h-4 w-4" /> Đang chờ {assigneeName} điền thông tin.
         </div>
       )}
 
@@ -5882,7 +5936,7 @@ function AssignmentFillView({ schema, record, project, assignment, isReviewer, h
             onToggleLock={() => {}}
             confirmingDelete={false}
           />
-          {!isDone && !isWaitingOnLeader && (
+          {canEdit && (
             <div className="mt-4 flex w-full justify-end gap-2 px-8 print:hidden">
               <button onClick={() => setShowPreview(false)} className="rounded-md border border-stone-300 px-4 py-2 text-sm text-stone-600 hover:bg-stone-50">
                 Quay lại chỉnh sửa
@@ -5890,7 +5944,9 @@ function AssignmentFillView({ schema, record, project, assignment, isReviewer, h
               <button onClick={handleConfirm} disabled={completing}
                 className="flex items-center gap-1.5 rounded-md bg-teal-900 px-4 py-2 text-sm text-white hover:bg-teal-800 disabled:opacity-60">
                 {completing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                {isReviewer ? 'Xác nhận & gửi lại người giao việc' : hasLeader ? 'Xác nhận & gửi lãnh đạo đơn vị' : 'Xác nhận hoàn thành & gửi lại'}
+                {status === 'submitted' ? 'Xác nhận & gửi email cho người giao và người nhận'
+                  : status === 'completed' ? (assignment.reviewerId ? 'Gửi lãnh đạo xác nhận lại' : 'Lưu thay đổi')
+                  : hasLeader ? 'Xác nhận & gửi lãnh đạo đơn vị' : 'Xác nhận hoàn thành & gửi lại'}
               </button>
             </div>
           )}
