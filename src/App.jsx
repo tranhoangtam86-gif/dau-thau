@@ -1107,6 +1107,11 @@ export default function App() {
         supabase.from('units').select('id, ten, leader_id').order('ten'),
       ]);
 
+      // Báo rõ bảng nào tải lỗi (thường do quy tắc RLS trên Supabase) thay vì im lặng hiển thị trống
+      const loadChecks = [['profiles', profilesRes], ['projects', projectsRes], ['project_permissions', permsRes], ['project_types', typesRes], ['custom_fields', customFieldsRes], ['docx_templates', docxTemplatesRes], ['excel_templates', excelTemplatesRes], ['document_assignments', assignmentsRes], ['goi_thau', goiThauRes], ['units', unitsRes]];
+      const failedLoads = loadChecks.filter(([, r]) => r && r.error).map(([n, r]) => `${n} (${r.error.message})`);
+      if (failedLoads.length > 0) { console.error('Lỗi tải dữ liệu:', failedLoads); setTimeout(() => showToast('Không tải được dữ liệu: ' + failedLoads.join('; '), 'error'), 500); }
+
       const nextRecords = {};
       for (const key of TYPE_ORDER) {
         const { data: rows } = await supabase
@@ -1734,8 +1739,17 @@ export default function App() {
   /* ---------------- mẫu file Word (.docx) ---------------- */
   async function uploadDocxTemplate(docType, file, projectTypeId) {
     const typeKey = projectTypeId || GENERIC_TYPE_ID;
+    // Kiểm tra đúng định dạng .docx (thực chất là file zip chứa word/document.xml) trước khi lưu
+    try {
+      const head = new Uint8Array(await file.slice(0, 4).arrayBuffer());
+      const isZip = head[0] === 0x50 && head[1] === 0x4b;
+      if (!isZip || !new PizZip(await file.arrayBuffer()).file('word/document.xml')) throw new Error('not docx');
+    } catch {
+      showToast('File không phải định dạng Word .docx hợp lệ (có thể là file .doc cũ hoặc bị lỗi). Hãy mở file bằng Microsoft Word → Lưu thành (Save As) → "Word Document (*.docx)" rồi tải lên lại.', 'error');
+      return;
+    }
     const path = `${docType}_${typeKey}.docx`;
-    const { error: uploadError } = await supabase.storage.from('docx-templates').upload(path, file, { upsert: true });
+    const { error: uploadError } = await supabase.storage.from('docx-templates').upload(path, file, { upsert: true, contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
     if (uploadError) { showToast('Không thể tải lên file mẫu: ' + uploadError.message, 'error'); return; }
     const { data, error } = await supabase
       .from('docx_templates')
@@ -1783,6 +1797,10 @@ export default function App() {
     const { data: fileBlob, error } = await supabase.storage.from('docx-templates').download(tpl.storage_path);
     if (error) throw error;
     const arrayBuffer = await fileBlob.arrayBuffer();
+    const head = new Uint8Array(arrayBuffer.slice(0, 4));
+    if (head[0] !== 0x50 || head[1] !== 0x4b) {
+      throw new Error('File mẫu Word đã lưu trên hệ thống không phải định dạng .docx hợp lệ (có thể là file .doc cũ hoặc bị lỗi khi tải lên). Quản trị viên vui lòng mở file bằng Word, Lưu thành .docx rồi tải lên lại ở Tùy chỉnh mẫu → Mẫu Word.');
+    }
     const zip = new PizZip(arrayBuffer);
     const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true, nullGetter: () => '' });
 
