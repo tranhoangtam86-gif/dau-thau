@@ -1119,7 +1119,7 @@ export default function App() {
       ]);
 
       // Báo rõ bảng nào tải lỗi (thường do quy tắc RLS trên Supabase) thay vì im lặng hiển thị trống
-      const loadChecks = [['profiles', profilesRes], ['projects', projectsRes], ['project_permissions', permsRes], ['project_types', typesRes], ['custom_fields', customFieldsRes], ['docx_templates', docxTemplatesRes], ['excel_templates', excelTemplatesRes], ['document_assignments', assignmentsRes], ['goi_thau', goiThauRes], ['units', unitsRes]];
+      const loadChecks = [['profiles', profilesRes], ['projects', projectsRes], ['project_permissions', permsRes], ['project_types', typesRes], ['custom_fields', customFieldsRes], ['print_templates', printTemplatesRes], ['hidden_builtin_fields', hiddenFieldsRes], ['field_overrides', fieldOverridesRes], ['docx_templates', docxTemplatesRes], ['excel_templates', excelTemplatesRes], ['document_assignments', assignmentsRes], ['goi_thau', goiThauRes], ['units', unitsRes]];
       const failedLoads = loadChecks.filter(([, r]) => r && r.error).map(([n, r]) => `${n} (${r.error.message})`);
       if (failedLoads.length > 0) { console.error('Lỗi tải dữ liệu:', failedLoads); setTimeout(() => showToast('Không tải được dữ liệu: ' + failedLoads.join('; '), 'error'), 500); }
 
@@ -3549,6 +3549,12 @@ function DetailView({ docType, schema, record, project, canEdit, canDelete, canL
       {hasCustomLayout ? (
         <CustomPrintOutput schema={schema} record={record} project={project} elements={layoutElements} orientation={layoutOrientation} />
       ) : (
+      <>
+      {canEdit && docType !== 'project' && (
+        <div className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800 print:hidden">
+          Hồ sơ này đang dùng bố cục mặc định vì chưa có bố cục in đã lưu cho loại dự án "{project?.typeName || 'chung'}". Quản trị viên vào Tùy chỉnh mẫu → chọn đúng loại dự án này (hoặc "Áp dụng cho tất cả loại dự án") → thiết kế bố cục và bấm Lưu.
+        </div>
+      )}
       <div className="rounded-lg border border-stone-200 bg-white p-10 shadow-sm print:border-0 print:p-0 print:shadow-none">
         <div className="text-center">
           <div className="text-sm font-semibold uppercase tracking-wide text-stone-800">Cộng hòa Xã hội Chủ nghĩa Việt Nam</div>
@@ -3662,6 +3668,7 @@ function DetailView({ docType, schema, record, project, canEdit, canDelete, canL
           </div>
         </div>
       </div>
+      </>
       )}
       </div>
       )}
