@@ -72,9 +72,7 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ error: createError.message }), { status: 400, headers: corsHeaders })
       }
 
-      if (is_admin) {
-        await adminClient.from('profiles').update({ is_admin: true }).eq('id', newUser.user.id)
-      }
+      await adminClient.from('profiles').update({ email, ...(is_admin ? { is_admin: true } : {}) }).eq('id', newUser.user.id)
 
       return new Response(JSON.stringify({ success: true, user: newUser.user }), { status: 200, headers: corsHeaders })
     }
@@ -100,6 +98,8 @@ Deno.serve(async (req) => {
       if (emailError) {
         return new Response(JSON.stringify({ error: emailError.message }), { status: 400, headers: corsHeaders })
       }
+      // Đồng bộ email vào bảng profiles để hiển thị đúng ở màn hình Người dùng
+      await adminClient.from('profiles').update({ email: new_email }).eq('id', user_id)
       return new Response(JSON.stringify({ success: true }), { status: 200, headers: corsHeaders })
     }
 
@@ -143,9 +143,7 @@ Deno.serve(async (req) => {
           results.push({ email, success: false, error: createError.message })
           continue
         }
-        if (is_admin) {
-          await adminClient.from('profiles').update({ is_admin: true }).eq('id', newUser.user.id)
-        }
+        await adminClient.from('profiles').update({ email, ...(is_admin ? { is_admin: true } : {}) }).eq('id', newUser.user.id)
         results.push({ email, success: true, id: newUser.user.id, full_name })
       }
 

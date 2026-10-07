@@ -1037,10 +1037,36 @@ export default function App() {
   }, []);
 
   async function handleLogin(email, password) {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) return { error: 'Email hoặc mật khẩu không đúng.' };
+    const { error } = await supabase.auth.signInWithPassword({ email: String(email || '').trim().toLowerCase(), password });
+    if (error) {
+      const m = (error.message || '').toLowerCase();
+      if (m.includes('invalid login')) return { error: 'Email hoặc mật khẩu không đúng. Kiểm tra lại khoảng trắng thừa hoặc nhờ quản trị viên đặt lại mật khẩu.' };
+      if (m.includes('not confirmed')) return { error: 'Tài khoản chưa được xác nhận email. Nhờ quản trị viên đổi lại email để xác nhận.' };
+      if (m.includes('rate') || m.includes('too many')) return { error: 'Đăng nhập quá nhiều lần, vui lòng đợi vài phút rồi thử lại.' };
+      return { error: 'Không đăng nhập được: ' + error.message };
+    }
     return {};
   }
+  // Làm mới thông tin người dùng (tên, quyền, đơn vị...) khi quay lại tab và mỗi 60 giây, để thay đổi của quản trị viên hiện ra ngay
+  useEffect(() => {
+    if (!session) return undefined;
+    let stopped = false;
+    async function refreshProfiles() {
+      const [me, all] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', session.user.id).single(),
+        supabase.from('profiles').select('*').order('full_name'),
+      ]);
+      if (stopped) return;
+      if (me.data) setMyProfile((prev) => ({ ...(prev || {}), ...me.data }));
+      if (all.data) setProfiles(all.data);
+    }
+    const timer = setInterval(refreshProfiles, 60000);
+    const onVisible = () => { if (document.visibilityState === 'visible') refreshProfiles(); };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', refreshProfiles);
+    return () => { stopped = true; clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('focus', refreshProfiles); };
+  }, [session]);
+
   async function handleLogout() {
     await supabase.auth.signOut();
   }
@@ -1052,8 +1078,8 @@ export default function App() {
     (async () => {
       setLoading(true);
       const [profileRes, profilesRes, projectsRes, permsRes, typesRes, auditRes, templatesRes, customFieldsRes, printTemplatesRes, hiddenFieldsRes, fieldOverridesRes, docxTemplatesRes, excelTemplatesRes, assignmentsRes, projectStepsRes, goiThauRes, templateModeRes, appSettingsRes, unitsRes] = await Promise.all([
-        supabase.from('profiles').select('id, full_name, is_admin, unit_id').eq('id', session.user.id).single(),
-        supabase.from('profiles').select('id, full_name, is_admin, unit_id').order('full_name'),
+        supabase.from('profiles').select('*').eq('id', session.user.id).single(),
+        supabase.from('profiles').select('*').order('full_name'),
         supabase.from('projects').select('id, ten, ma_du_an, mo_ta, type_id, data, created_at').order('created_at'),
         supabase.from('project_permissions').select('project_id, user_id, doc_type, can_view, can_add, can_edit, can_lock, can_delete'),
         supabase.from('project_types').select('id, ten').order('ten'),
@@ -2173,7 +2199,7 @@ export default function App() {
   async function createUser(email, password, fullName, isAdmin) {
     const { ok, result } = await callUserFunction({ action: 'create', email, password, full_name: fullName, is_admin: isAdmin });
     if (!ok) { showToast('Không thể tạo người dùng: ' + (result.error || ''), 'error'); return; }
-    setProfiles((prev) => [...prev, { id: result.user.id, full_name: fullName, is_admin: isAdmin }]);
+    setProfiles((prev) => [...prev, { id: result.user.id, full_name: fullName, is_admin: isAdmin, email }]);
     showToast('Đã tạo người dùng.');
     appendLog('create_user', `${myProfile.full_name} đã tạo tài khoản người dùng "${fullName}"${isAdmin ? ' với quyền Quản trị viên' : ''}.`);
   }
@@ -2182,7 +2208,7 @@ export default function App() {
     if (!ok) { showToast('Không thể nhập danh sách: ' + (result.error || ''), 'error'); return { results: [] }; }
     const succeeded = result.results.filter((r) => r.success);
     if (succeeded.length > 0) {
-      setProfiles((prev) => [...prev, ...succeeded.map((r) => ({ id: r.id, full_name: r.full_name, is_admin: false }))]);
+      setProfiles((prev) => [...prev, ...succeeded.map((r) => ({ id: r.id, full_name: r.full_name, is_admin: false, email: r.email }))]);
       appendLog('bulk_create_user', `${myProfile.full_name} đã nhập danh sách và tạo ${succeeded.length} tài khoản người dùng mới.`);
     }
     showToast(`Đã tạo ${succeeded.length}/${rows.length} tài khoản.`, succeeded.length === rows.length ? 'ok' : 'error');
@@ -2218,6 +2244,7 @@ export default function App() {
     if (error) { showToast('Không thể cập nhật thông tin: ' + error.message, 'error'); return; }
     if (!updated || updated.length === 0) { showToast('Không lưu được: Supabase từ chối ghi (thiếu quyền cập nhật bảng profiles). Cần chạy lại policy "Self or admin can update profile".', 'error'); return; }
     setProfiles((prev) => prev.map((p) => (p.id === userId ? { ...p, full_name: fullName } : p)));
+    if (userId === myProfile?.id) setMyProfile((prev) => (prev ? { ...prev, full_name: fullName } : prev));
     showToast('Đã cập nhật thông tin người dùng.');
     appendLog('update_user_profile', `${myProfile.full_name} đã sửa thông tin người dùng "${fullName}".`);
   }
@@ -2233,6 +2260,7 @@ export default function App() {
   async function updateUserEmail(userId, newEmail) {
     const { ok, result } = await callUserFunction({ action: 'update_email', user_id: userId, new_email: newEmail });
     if (!ok) { showToast('Không thể đổi email: ' + (result.error || ''), 'error'); return false; }
+    setProfiles((prev) => prev.map((p) => (p.id === userId ? { ...p, email: newEmail } : p)));
     showToast(`Đã đổi email cho "${nameOf(userId)}".`);
     appendLog('update_email', `${myProfile.full_name} đã đổi email đăng nhập cho "${nameOf(userId)}".`);
     return true;
@@ -4157,9 +4185,9 @@ function UserEditForm({ user, onCancel, onSaveProfile, onResetPassword, onUpdate
       </div>
 
       <div>
-        <label className="mb-1 block text-xs text-stone-500">Đổi email đăng nhập (để trống nếu không đổi)</label>
+        <label className="mb-1 block text-xs text-stone-500">Đổi email đăng nhập (để trống nếu không đổi){user.email ? ` — hiện tại: ${user.email}` : ''}</label>
         <div className="flex gap-2">
-          <input type="email" value={newEmail} onChange={(e) => { setNewEmail(e.target.value); setEmailDone(false); }}
+          <input type="email" name="admin-new-email" autoComplete="off" value={newEmail} onChange={(e) => { setNewEmail(e.target.value); setEmailDone(false); }}
             placeholder="Email mới" className="flex-1 rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
           <button onClick={handleSaveEmail} disabled={savingEmail || !newEmail.trim()}
             className="rounded-md bg-teal-900 px-3 py-1.5 text-xs text-white hover:bg-teal-800 disabled:opacity-60">
@@ -4172,7 +4200,7 @@ function UserEditForm({ user, onCancel, onSaveProfile, onResetPassword, onUpdate
       <div>
         <label className="mb-1 block text-xs text-stone-500">Đặt lại mật khẩu (để trống nếu không đổi)</label>
         <div className="flex gap-2">
-          <input type="password" value={newPassword} onChange={(e) => { setNewPassword(e.target.value); setResetDone(false); }}
+          <input type="password" name="admin-reset-password" autoComplete="new-password" value={newPassword} onChange={(e) => { setNewPassword(e.target.value); setResetDone(false); }}
             placeholder="Mật khẩu mới (tối thiểu 6 ký tự)" className="flex-1 rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
           <button onClick={handleReset} disabled={resetting || newPassword.length < 6}
             className="flex items-center gap-1 rounded-md bg-amber-700 px-3 py-1.5 text-xs text-white hover:bg-amber-800 disabled:opacity-60">
@@ -4338,6 +4366,7 @@ function UsersView({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-sm text-stone-700">
                     {u.full_name || '(chưa đặt tên)'}
+                    {u.email && <span className="text-xs text-stone-400">{u.email}</span>}
                     {u.is_admin && <RoleBadge role="admin" />}
                   </div>
                   <div className="flex items-center gap-3">
@@ -4365,9 +4394,9 @@ function UsersView({
           <div className="col-span-2 text-xs font-medium uppercase tracking-wide text-stone-400">Tạo từng người</div>
           <input value={newUserName} onChange={(e) => setNewUserName(e.target.value)} placeholder="Họ tên"
             className="col-span-2 rounded-md border border-stone-300 px-3 py-1.5 text-sm sm:col-span-1" />
-          <input type="email" value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} placeholder="Email đăng nhập"
+          <input type="email" name="admin-create-email" autoComplete="off" value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} placeholder="Email đăng nhập"
             className="rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
-          <input type="password" value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} placeholder="Mật khẩu tạm thời (tối thiểu 6 ký tự)"
+          <input type="password" name="admin-create-password" autoComplete="new-password" value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} placeholder="Mật khẩu tạm thời (tối thiểu 6 ký tự)"
             className="rounded-md border border-stone-300 px-3 py-1.5 text-sm" />
           <label className="col-span-2 flex items-center gap-1.5 text-xs text-stone-500">
             <input type="checkbox" checked={newUserIsAdmin} onChange={(e) => setNewUserIsAdmin(e.target.checked)} />
