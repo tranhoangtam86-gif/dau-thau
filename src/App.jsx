@@ -149,6 +149,8 @@ if (typeof document !== 'undefined' && !document.getElementById('app-heading-fon
   link.href = 'https://fonts.googleapis.com/css2?family=Lora:wght@400;500;600;700&display=swap&subset=vietnamese';
   document.head.appendChild(link);
 }
+// Đặt true nếu muốn hiện lại nút "In" ở màn hình chi tiết hồ sơ
+const SHOW_PRINT_BUTTON = false;
 const TYPE_ORDER = ['bao_gia', 'ho_so_yeu_cau', 'bien_ban', 'hop_dong'];
 
 // UUID đặc biệt đại diện cho "áp dụng cho mọi loại dự án" (thay vì để trống)
@@ -3527,8 +3529,10 @@ function DetailView({ docType, schema, record, project, canEdit, canDelete, canL
               {exportingPdf ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} Xuất PDF
             </button>
           )}
-          <button onClick={() => window.print()} className="flex items-center gap-1.5 rounded-md bg-teal-900 px-3 py-1.5 text-sm text-white hover:bg-teal-800">
-            <Printer className="h-3.5 w-3.5" /> In</button>
+          {SHOW_PRINT_BUTTON && (
+            <button onClick={() => window.print()} className="flex items-center gap-1.5 rounded-md bg-teal-900 px-3 py-1.5 text-sm text-white hover:bg-teal-800">
+              <Printer className="h-3.5 w-3.5" /> In</button>
+          )}
         </div>
       </div>
 
