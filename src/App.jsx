@@ -4,7 +4,7 @@ import {
   Printer, Pencil, Plus, X, ChevronLeft, LayoutDashboard, Loader2,
   Save, Inbox, FolderKanban, Shield, UserPlus, EyeOff, Eye, Users, History,
   UserCog, Mail, Lock, Unlock, LogIn, LogOut, AlertCircle, Upload, CheckCircle2, XCircle,
-  Tags, Download, FileSpreadsheet, Settings2, Send, ClipboardCheck, FileType2,
+  Tags, Download, FileSpreadsheet, Settings2, Send, ClipboardCheck, FileType2, FileCheck, Paperclip, MessageSquarePlus,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import PizZip from 'pizzip';
@@ -138,6 +138,67 @@ const DOC_TYPES = {
       { key: 'ngayKy', label: 'Ngày ký', date: true },
     ],
   },
+  bien_ban_nghiem_thu: {
+    key: 'bien_ban_nghiem_thu',
+    label: 'Biên bản nghiệm thu',
+    short: 'BB nghiệm thu',
+    icon: ClipboardCheck,
+    docTitle: 'BIÊN BẢN NGHIỆM THU',
+    signLeft: 'Đại diện bên giao thầu',
+    signRight: 'Đại diện bên nhận thầu',
+    dateField: 'ngayNghiemThu',
+    fields: [
+      { name: 'soHopDong', label: 'Số hợp đồng', type: 'text' },
+      { name: 'maGoiThau', label: 'Mã gói thầu', type: 'text', required: true },
+      { name: 'tenGoiThau', label: 'Tên gói thầu', type: 'text', required: true, wide: true },
+      { name: 'benA_TenDonVi', label: 'Bên giao thầu (Bên A)', type: 'text', wide: true },
+      { name: 'benB_TenDonVi', label: 'Bên nhận thầu (Bên B)', type: 'text', wide: true },
+      { name: 'ngayNghiemThu', label: 'Ngày nghiệm thu', type: 'date' },
+      { name: 'diaDiem', label: 'Địa điểm nghiệm thu', type: 'text' },
+      { name: 'thanhPhanThamGia', label: 'Thành phần tham gia nghiệm thu', type: 'textarea', wide: true },
+      { name: 'noiDungNghiemThu', label: 'Nội dung nghiệm thu', type: 'textarea', wide: true },
+      { name: 'giaTriNghiemThu', label: 'Giá trị nghiệm thu (VNĐ)', type: 'number' },
+      { name: 'danhGiaChatLuong', label: 'Đánh giá chất lượng, khối lượng', type: 'textarea', wide: true },
+      { name: 'ketLuan', label: 'Kết luận', type: 'textarea', wide: true },
+    ],
+    listColumns: [
+      { key: 'maGoiThau', label: 'Mã gói thầu' },
+      { key: 'tenGoiThau', label: 'Tên gói thầu' },
+      { key: 'ngayNghiemThu', label: 'Ngày nghiệm thu', date: true },
+      { key: 'giaTriNghiemThu', label: 'Giá trị nghiệm thu', money: true },
+    ],
+  },
+  bien_ban_thanh_ly: {
+    key: 'bien_ban_thanh_ly',
+    label: 'Biên bản thanh lý',
+    short: 'BB thanh lý',
+    icon: FileCheck,
+    docTitle: 'BIÊN BẢN THANH LÝ HỢP ĐỒNG',
+    signLeft: 'Đại diện Bên A',
+    signRight: 'Đại diện Bên B',
+    dateField: 'ngayThanhLy',
+    fields: [
+      { name: 'soHopDong', label: 'Số hợp đồng', type: 'text', required: true },
+      { name: 'maGoiThau', label: 'Mã gói thầu', type: 'text', required: true },
+      { name: 'tenGoiThau', label: 'Tên gói thầu', type: 'text', required: true, wide: true },
+      { name: 'benA_TenDonVi', label: 'Bên A – Tên đơn vị', type: 'text', wide: true },
+      { name: 'benA_DaiDien', label: 'Bên A – Người đại diện', type: 'text' },
+      { name: 'benB_TenDonVi', label: 'Bên B – Tên đơn vị', type: 'text', wide: true },
+      { name: 'benB_DaiDien', label: 'Bên B – Người đại diện', type: 'text' },
+      { name: 'ngayThanhLy', label: 'Ngày thanh lý', type: 'date' },
+      { name: 'giaTriHopDong', label: 'Giá trị hợp đồng (VNĐ)', type: 'number' },
+      { name: 'giaTriThanhToan', label: 'Giá trị đã thanh toán (VNĐ)', type: 'number' },
+      { name: 'tinhHinhThucHien', label: 'Tình hình thực hiện hợp đồng', type: 'textarea', wide: true },
+      { name: 'congNoTonDong', label: 'Công nợ, nghĩa vụ còn tồn đọng', type: 'textarea', wide: true },
+      { name: 'ketLuan', label: 'Kết luận thanh lý', type: 'textarea', wide: true },
+    ],
+    listColumns: [
+      { key: 'soHopDong', label: 'Số hợp đồng' },
+      { key: 'tenGoiThau', label: 'Tên gói thầu' },
+      { key: 'ngayThanhLy', label: 'Ngày thanh lý', date: true },
+      { key: 'giaTriThanhToan', label: 'Đã thanh toán', money: true },
+    ],
+  },
 };
 
 // Phông chữ tiêu đề có đủ dấu tiếng Việt (Georgia thiếu một số dấu nên bị lỗi trên Chrome/Edge); Lora được tải từ Google Fonts bên dưới
@@ -151,7 +212,11 @@ if (typeof document !== 'undefined' && !document.getElementById('app-heading-fon
 }
 // Đặt true nếu muốn hiện lại nút "In" ở màn hình chi tiết hồ sơ
 const SHOW_PRINT_BUTTON = false;
-const TYPE_ORDER = ['bao_gia', 'ho_so_yeu_cau', 'bien_ban', 'hop_dong'];
+const TYPE_ORDER = ['bao_gia', 'ho_so_yeu_cau', 'bien_ban', 'hop_dong', 'bien_ban_nghiem_thu', 'bien_ban_thanh_ly'];
+// Các loại hồ sơ dùng được mẫu Word / toàn văn / xuất PDF
+const DOCX_TYPES = ['ho_so_yeu_cau', 'bien_ban', 'hop_dong', 'bien_ban_nghiem_thu', 'bien_ban_thanh_ly'];
+const PDF_TYPES = ['bien_ban', 'hop_dong', 'bien_ban_nghiem_thu', 'bien_ban_thanh_ly'];
+const emptyTypeMap = (extra = []) => Object.fromEntries([...TYPE_ORDER, ...extra].map((k) => [k, []]));
 
 // UUID đặc biệt đại diện cho "áp dụng cho mọi loại dự án" (thay vì để trống)
 const GENERIC_TYPE_ID = '00000000-0000-0000-0000-000000000000';
@@ -200,6 +265,22 @@ const EMAIL_TEMPLATE_TYPES = [
     defaultBody: '<p>{nguoi_giao} đã chỉnh sửa hồ sơ "<b>{ten_ho_so}</b>" (do {nguoi_dien} thực hiện) sau khi bạn xác nhận và gửi bạn xác nhận lại.</p>\n<p><a href="{link}">Bấm vào đây để xem và xác nhận</a></p>',
     placeholders: [['{nguoi_giao}', 'Tên người giao việc đã sửa'], ['{nguoi_dien}', 'Tên người nhận việc'], ['{ten_ho_so}', 'Tên hồ sơ'], ['{link}', 'Đường dẫn mở thẳng màn hình xác nhận']],
     sample: { nguoi_giao: 'Nguyễn Văn A', nguoi_dien: 'Trần Thị B', ten_ho_so: 'Gói thầu mua sắm thiết bị', link: 'https://dauthau.app/?assignment=demo' },
+  },
+  {
+    key: 'request_created',
+    label: 'Yêu cầu thực hiện — gửi người nhận yêu cầu',
+    defaultSubject: 'Yêu cầu mới từ {nguoi_gui}: {tieu_de}',
+    defaultBody: '<p>{nguoi_gui} đã gửi cho bạn một yêu cầu thực hiện: "<b>{tieu_de}</b>".</p>\n<p>{mo_ta}</p>\n<p>Số tệp đính kèm: {so_file}</p>\n<p><a href="{link}">Bấm vào đây để xem yêu cầu</a></p>',
+    placeholders: [['{nguoi_gui}', 'Tên người gửi yêu cầu'], ['{tieu_de}', 'Tiêu đề yêu cầu'], ['{mo_ta}', 'Mô tả ngắn'], ['{so_file}', 'Số tệp đính kèm'], ['{link}', 'Đường dẫn mở ứng dụng']],
+    sample: { nguoi_gui: 'Nguyễn Văn A', tieu_de: 'Đề nghị lập hồ sơ gói thầu X', mo_ta: 'Cần hoàn thành trước ngày 30.', so_file: '2', link: 'https://dauthau.app/?request=demo' },
+  },
+  {
+    key: 'request_updated',
+    label: 'Yêu cầu thực hiện — thông báo người gửi khi người nhận tiếp nhận / hoàn thành',
+    defaultSubject: 'Yêu cầu "{tieu_de}": {trang_thai}',
+    defaultBody: '<p>{nguoi_xu_ly} đã cập nhật yêu cầu "<b>{tieu_de}</b>" của bạn sang trạng thái <b>{trang_thai}</b>.</p>\n<p>Phản hồi: {ghi_chu}</p>\n<p><a href="{link}">Bấm vào đây để xem</a></p>',
+    placeholders: [['{nguoi_xu_ly}', 'Tên người nhận yêu cầu'], ['{tieu_de}', 'Tiêu đề yêu cầu'], ['{trang_thai}', 'Trạng thái mới'], ['{ghi_chu}', 'Ghi chú phản hồi'], ['{link}', 'Đường dẫn mở ứng dụng']],
+    sample: { nguoi_xu_ly: 'Trần Thị B', tieu_de: 'Đề nghị lập hồ sơ gói thầu X', trang_thai: 'Đã hoàn thành', ghi_chu: 'Đã xong', link: 'https://dauthau.app/?request=demo' },
   },
 ];
 function escapeHtml(v) {
@@ -979,9 +1060,9 @@ export default function App() {
   const [projectTypes, setProjectTypes] = useState([]);
   const [permissions, setPermissions] = useState([]);    // [{ projectId, userId, docType, can_view, can_add, can_edit, can_lock, can_delete }]
   const [importTemplates, setImportTemplates] = useState({}); // { [docType]: { column_mapping } }
-  const [customFields, setCustomFields] = useState({ bao_gia: [], ho_so_yeu_cau: [], bien_ban: [], hop_dong: [], project: [], goi_thau: [] });
-  const [hiddenFields, setHiddenFields] = useState({ bao_gia: [], ho_so_yeu_cau: [], bien_ban: [], hop_dong: [], project: [], goi_thau: [] });
-  const [fieldOverrides, setFieldOverrides] = useState({ bao_gia: [], ho_so_yeu_cau: [], bien_ban: [], hop_dong: [], project: [], goi_thau: [] });
+  const [customFields, setCustomFields] = useState(emptyTypeMap(['project', 'goi_thau']));
+  const [hiddenFields, setHiddenFields] = useState(emptyTypeMap(['project', 'goi_thau']));
+  const [fieldOverrides, setFieldOverrides] = useState(emptyTypeMap(['project', 'goi_thau']));
   const [projectSteps, setProjectSteps] = useState({}); // { [projectId]: [{ id, docType, sortOrder, completed }] }
   const [goiThauList, setGoiThauList] = useState({}); // { [projectId]: [{ id, projectId, maGoiThau, tenGoiThau, data, createdAt }] }
   const [templateFieldMode, setTemplateFieldModeState] = useState({}); // { [docType]: { [projectTypeId]: 'extend' | 'replace' } }
@@ -993,11 +1074,12 @@ export default function App() {
   const [myAssignments, setMyAssignments] = useState([]); // giao việc điền thông tin (của tôi hoặc do tôi giao)
   const [deepLinkAssignmentId, setDeepLinkAssignmentId] = useState(null);
   const [activeAssignmentId, setActiveAssignmentId] = useState(null);
-  const [records, setRecords] = useState({ bao_gia: [], ho_so_yeu_cau: [], bien_ban: [], hop_dong: [] });
+  const [records, setRecords] = useState(emptyTypeMap());
   const [auditLog, setAuditLog] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [activeType, setActiveType] = useState('bao_gia');
+  const [deepLinkRequest, setDeepLinkRequest] = useState(false);
   const [view, setView] = useState('dashboard'); // dashboard | list | form | detail | users | projects | log
   const [projectFilter, setProjectFilter] = useState('all');
   const [editingId, setEditingId] = useState(null);
@@ -1053,6 +1135,7 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     const aid = params.get('assignment');
     if (aid) setDeepLinkAssignmentId(aid);
+    if (params.get('request')) setDeepLinkRequest(true);
   }, []);
 
   async function handleLogin(email, password) {
@@ -1172,7 +1255,7 @@ export default function App() {
       })));
       setAuditLog((auditRes.data || []).map((l) => ({ id: l.id, time: l.created_at, actor: l.actor_name, action: l.action, summary: l.summary })));
       setImportTemplates(Object.fromEntries((templatesRes.data || []).map((t) => [t.type, { column_mapping: t.column_mapping || {} }])));
-      const cfByType = { bao_gia: [], ho_so_yeu_cau: [], bien_ban: [], hop_dong: [], project: [], goi_thau: [] };
+      const cfByType = emptyTypeMap(['project', 'goi_thau']);
       (customFieldsRes.data || []).forEach((f) => { if (cfByType[f.doc_type]) cfByType[f.doc_type].push(f); });
       setCustomFields(cfByType);
       const ptByType = {};
@@ -1181,10 +1264,10 @@ export default function App() {
         ptByType[t.doc_type][t.project_type_id] = { layout: t.layout || [] };
       });
       setPrintTemplates(ptByType);
-      const hiddenByType = { bao_gia: [], ho_so_yeu_cau: [], bien_ban: [], hop_dong: [], project: [], goi_thau: [] };
+      const hiddenByType = emptyTypeMap(['project', 'goi_thau']);
       (hiddenFieldsRes.data || []).forEach((h) => { if (hiddenByType[h.doc_type]) hiddenByType[h.doc_type].push(h); });
       setHiddenFields(hiddenByType);
-      const overridesByType = { bao_gia: [], ho_so_yeu_cau: [], bien_ban: [], hop_dong: [], project: [], goi_thau: [] };
+      const overridesByType = emptyTypeMap(['project', 'goi_thau']);
       (fieldOverridesRes.data || []).forEach((o) => { if (overridesByType[o.doc_type]) overridesByType[o.doc_type].push(o); });
       setFieldOverrides(overridesByType);
       const dtByType = {};
@@ -1211,6 +1294,12 @@ export default function App() {
     })();
     return () => { cancelled = true; };
   }, [session]);
+
+  useEffect(() => {
+    if (!deepLinkRequest || loading || !myProfile) return;
+    setView('requests');
+    setDeepLinkRequest(false);
+  }, [deepLinkRequest, loading, myProfile]);
 
   // Sau khi tải xong dữ liệu, nếu có link giao việc (?assignment=...), tự mở đúng màn hình điền
   useEffect(() => {
@@ -2432,6 +2521,26 @@ export default function App() {
               Đơn vị &amp; lãnh đạo
             </button>
           )}
+          <button
+            onClick={() => setView('requests')}
+            className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
+              view === 'requests' ? 'bg-teal-800/70 text-white' : 'text-teal-200 hover:bg-teal-900/60'
+            }`}
+          >
+            <MessageSquarePlus className="h-4 w-4" />
+            Yêu cầu thực hiện
+          </button>
+          {amAdmin && (
+            <button
+              onClick={() => setView('request-receivers')}
+              className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
+                view === 'request-receivers' ? 'bg-teal-800/70 text-white' : 'text-teal-200 hover:bg-teal-900/60'
+              }`}
+            >
+              <UserCog className="h-4 w-4" />
+              Người nhận yêu cầu
+            </button>
+          )}
           {amAdmin && (
             <button
               onClick={() => setView('email-templates')}
@@ -2573,7 +2682,7 @@ export default function App() {
               assignment={assignment}
               canEdit={canEditAssignment}
               viewerRole={viewerRole}
-              docxAvailable={['ho_so_yeu_cau', 'bien_ban', 'hop_dong'].includes(assignment.docType) && !!resolveDocxTemplate(assignment.docType, proj?.typeId)}
+              docxAvailable={DOCX_TYPES.includes(assignment.docType) && !!resolveDocxTemplate(assignment.docType, proj?.typeId)}
               onGenerateDocHtml={(rec) => generateDocHtml(assignment.docType, rec, proj)}
               hasLeader={!!(units.find((u) => u.id === myProfile.unit_id)?.leader_id) && units.find((u) => u.id === myProfile.unit_id).leader_id !== myId}
               assigneeName={nameOf(assignment.assignedTo)}
@@ -2645,7 +2754,7 @@ export default function App() {
             onExportDocx={() => exportDocx(activeType, detailRecord, detailProject)}
             onExportPdf={exportPdf}
             onExportExcel={() => exportBaoGiaExcel(getSchema(activeType, detailProject?.typeId), detailRecord, detailProject, activeType, detailProject?.typeId)}
-            onGenerateDocHtml={['ho_so_yeu_cau', 'bien_ban', 'hop_dong'].includes(activeType) && resolveDocxTemplate(activeType, detailProject?.typeId)
+            onGenerateDocHtml={DOCX_TYPES.includes(activeType) && resolveDocxTemplate(activeType, detailProject?.typeId)
               ? (rec) => generateDocHtml(activeType, rec, detailProject) : undefined}
             onSaveDocHtml={(html) => saveDocHtml(activeType, detailRecord, html)}
             onExportFullWord={(html, rec) => exportHtmlAsWord(html, rec.tenGoiThau || rec.soHopDong || rec.maGoiThau || 'ho_so')}
@@ -2745,6 +2854,18 @@ export default function App() {
 
         {view === 'units' && amAdmin && (
           <UnitsView units={units} profiles={profiles} onCreateUnit={createUnit} onSetLeader={setUnitLeader} onDeleteUnit={deleteUnit} onSetUserUnit={setUserUnit} />
+        )}
+
+        {view === 'requests' && (
+          <RequestsView myId={myId} amAdmin={amAdmin} profiles={profiles} nameOf={nameOf} emailTemplates={emailTemplates} sendMail={sendNotificationEmail} showToast={showToast} />
+        )}
+
+        {view === 'request-receivers' && amAdmin && (
+          <RequestReceiversView
+            profiles={profiles}
+            eligibleIds={[...new Set(permissions.filter((p) => p.can_add).map((p) => p.userId))]}
+            showToast={showToast}
+          />
         )}
 
         {view === 'email-templates' && amAdmin && (
@@ -3461,7 +3582,7 @@ function DetailView({ docType, schema, record, project, canEdit, canDelete, canL
   const [docMode, setDocMode] = useState('full');
   const fullMode = hasFullDoc && docMode === 'full';
   const [exportingPdf, setExportingPdf] = useState(false);
-  const supportsPdfExport = ['bien_ban', 'hop_dong'].includes(docType);
+  const supportsPdfExport = PDF_TYPES.includes(docType);
   const supportsExcelExport = docType === 'bao_gia';
 
   async function handleExportPdf() {
@@ -4661,7 +4782,7 @@ function TemplateEditorView({ getSchema, projectTypes, customFields, hiddenField
   const [tab, setTab] = useState('fields'); // fields | print | docx | excel
   const [projectTypeId, setProjectTypeId] = useState(GENERIC_TYPE_ID);
   const isProjectFields = docType === 'project' || docType === 'goi_thau';
-  const supportsDocx = !isProjectFields && ['ho_so_yeu_cau', 'bien_ban', 'hop_dong'].includes(docType);
+  const supportsDocx = !isProjectFields && DOCX_TYPES.includes(docType);
   const supportsExcel = docType === 'bao_gia';
   const currentMode = (templateFieldMode[docType] && templateFieldMode[docType][projectTypeId]) || 'extend';
 
@@ -4849,6 +4970,359 @@ function DocxTemplateManager({ docType, schema, existing, onUpload }) {
 }
 
 /* ---------------- Đơn vị & lãnh đạo ---------------- */
+
+/* ---------------- Yêu cầu thực hiện ---------------- */
+const REQUEST_STATUS = {
+  new: { label: 'Mới gửi', cls: 'bg-amber-100 text-amber-800' },
+  in_progress: { label: 'Đang xử lý', cls: 'bg-blue-100 text-blue-800' },
+  done: { label: 'Đã hoàn thành', cls: 'bg-emerald-100 text-emerald-800' },
+};
+const REQUEST_MAX_FILE = 50 * 1024 * 1024;
+function safeStorageName(name) {
+  const base = String(name || 'file').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D');
+  return base.replace(/[^A-Za-z0-9._-]+/g, '_').slice(-120) || 'file';
+}
+function fmtSize(n) {
+  if (!n && n !== 0) return '';
+  if (n < 1024) return `${n} B`;
+  if (n < 1048576) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1048576).toFixed(1)} MB`;
+}
+const inputCls = 'w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-teal-600 focus:outline-none focus:ring-1 focus:ring-teal-600';
+
+function RequestsView({ myId, amAdmin, profiles, nameOf, emailTemplates, sendMail, showToast }) {
+  const [requests, setRequests] = useState([]);
+  const [receiverIds, setReceiverIds] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState('mine');
+  const [creating, setCreating] = useState(false);
+  const [selectedId, setSelectedId] = useState(null);
+
+  const load = useCallback(async () => {
+    const [reqRes, recvRes] = await Promise.all([
+      supabase.from('work_requests').select('*').order('created_at', { ascending: false }),
+      supabase.from('request_receivers').select('user_id'),
+    ]);
+    if (reqRes.error || recvRes.error) {
+      showToast('Không tải được yêu cầu: ' + (reqRes.error || recvRes.error).message + ' (đã chạy migration v23 chưa?)', 'error');
+    }
+    setRequests(reqRes.data || []);
+    setReceiverIds((recvRes.data || []).map((r) => r.user_id));
+    setLoading(false);
+  }, [showToast]);
+  useEffect(() => { load(); }, [load]);
+
+  const mine = requests.filter((r) => r.requester_id === myId);
+  const incoming = requests.filter((r) => r.recipient_id === myId);
+  const isReceiver = receiverIds.includes(myId);
+  const lists = { mine, incoming, all: requests };
+  const shown = lists[tab] || [];
+  const selected = requests.find((r) => r.id === selectedId);
+
+  if (selected) {
+    return (
+      <RequestDetail
+        request={selected} myId={myId} amAdmin={amAdmin} nameOf={nameOf}
+        emailTemplates={emailTemplates} sendMail={sendMail} showToast={showToast}
+        onBack={() => setSelectedId(null)} onChanged={load}
+      />
+    );
+  }
+  if (creating) {
+    return (
+      <RequestForm
+        myId={myId} nameOf={nameOf} profiles={profiles}
+        receiverIds={receiverIds.filter((id) => id !== myId)}
+        emailTemplates={emailTemplates} sendMail={sendMail} showToast={showToast}
+        onCancel={() => setCreating(false)}
+        onCreated={async (id) => { setCreating(false); await load(); setSelectedId(id); }}
+      />
+    );
+  }
+
+  const tabs = [['mine', `Yêu cầu của tôi (${mine.length})`]];
+  if (isReceiver || incoming.length > 0) tabs.push(['incoming', `Gửi tới tôi (${incoming.length})`]);
+  if (amAdmin) tabs.push(['all', `Tất cả (${requests.length})`]);
+
+  return (
+    <div className="mx-auto max-w-5xl">
+      <div className="mb-4 flex items-center justify-between">
+        <h1 className="text-xl font-semibold text-slate-800">Yêu cầu thực hiện</h1>
+        <button onClick={() => setCreating(true)} className="flex items-center gap-2 rounded-md bg-teal-700 px-3 py-2 text-sm text-white hover:bg-teal-800">
+          <Plus className="h-4 w-4" /> Tạo yêu cầu
+        </button>
+      </div>
+      <div className="mb-3 flex gap-1 border-b border-slate-200">
+        {tabs.map(([k, label]) => (
+          <button key={k} onClick={() => setTab(k)} className={`px-3 py-2 text-sm ${tab === k ? 'border-b-2 border-teal-700 font-medium text-teal-800' : 'text-slate-500 hover:text-slate-700'}`}>{label}</button>
+        ))}
+      </div>
+      {loading ? (
+        <div className="py-10 text-center text-slate-500"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>
+      ) : shown.length === 0 ? (
+        <div className="rounded-md border border-dashed border-slate-300 py-10 text-center text-sm text-slate-500">Chưa có yêu cầu nào.</div>
+      ) : (
+        <div className="overflow-hidden rounded-md border border-slate-200 bg-white">
+          {shown.map((r) => (
+            <button key={r.id} onClick={() => setSelectedId(r.id)} className="flex w-full items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 text-left last:border-0 hover:bg-slate-50">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium text-slate-800">{r.title}</div>
+                <div className="mt-0.5 truncate text-xs text-slate-500">
+                  {nameOf(r.requester_id)} → {nameOf(r.recipient_id)} · {new Date(r.created_at).toLocaleString('vi-VN')}
+                  {(r.attachments || []).length > 0 && <> · <Paperclip className="inline h-3 w-3" /> {r.attachments.length}</>}
+                </div>
+              </div>
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${REQUEST_STATUS[r.status]?.cls}`}>{REQUEST_STATUS[r.status]?.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RequestForm({ myId, nameOf, receiverIds, emailTemplates, sendMail, showToast, onCancel, onCreated }) {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [recipientId, setRecipientId] = useState(receiverIds.length === 1 ? receiverIds[0] : '');
+  const [files, setFiles] = useState([]);
+  const [busy, setBusy] = useState(false);
+
+  function addFiles(list) {
+    const arr = Array.from(list || []);
+    const tooBig = arr.filter((f) => f.size > REQUEST_MAX_FILE);
+    if (tooBig.length) showToast(`File quá lớn (tối đa 50 MB): ${tooBig.map((f) => f.name).join(', ')}`, 'error');
+    setFiles((cur) => [...cur, ...arr.filter((f) => f.size <= REQUEST_MAX_FILE)]);
+  }
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!title.trim()) { showToast('Vui lòng nhập tiêu đề yêu cầu', 'error'); return; }
+    if (!recipientId) { showToast('Vui lòng chọn người nhận yêu cầu', 'error'); return; }
+    setBusy(true);
+    const { data: row, error } = await supabase.from('work_requests')
+      .insert({ title: title.trim(), description: description.trim(), requester_id: myId, recipient_id: recipientId })
+      .select('id').single();
+    if (error) { setBusy(false); showToast('Không tạo được yêu cầu: ' + error.message, 'error'); return; }
+
+    const uploaded = [];
+    const failed = [];
+    for (const f of files) {
+      const path = `${row.id}/${Date.now()}_${Math.random().toString(36).slice(2, 7)}_${safeStorageName(f.name)}`;
+      const { error: upErr } = await supabase.storage.from('request-files').upload(path, f, { contentType: f.type || 'application/octet-stream' });
+      if (upErr) failed.push(`${f.name} (${upErr.message})`);
+      else uploaded.push({ name: f.name, path, size: f.size, type: f.type || '' });
+    }
+    if (uploaded.length) {
+      const { error: updErr } = await supabase.from('work_requests').update({ attachments: uploaded, updated_at: new Date().toISOString() }).eq('id', row.id);
+      if (updErr) failed.push('lưu danh sách file: ' + updErr.message);
+    }
+    if (failed.length) showToast('Yêu cầu đã tạo nhưng có file lỗi: ' + failed.join('; '), 'error');
+    else showToast('Đã gửi yêu cầu');
+
+    const link = `${window.location.origin}${window.location.pathname}?request=${row.id}`;
+    const mail = renderEmailTemplate(emailTemplates, 'request_created', {
+      nguoi_gui: nameOf(myId), tieu_de: title.trim(), mo_ta: description.trim(), so_file: String(uploaded.length), link,
+    });
+    await sendMail(recipientId, mail.subject, mail.html);
+    setBusy(false);
+    onCreated(row.id);
+  }
+
+  return (
+    <form onSubmit={submit} className="mx-auto max-w-2xl">
+      <button type="button" onClick={onCancel} className="mb-3 flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700"><ChevronLeft className="h-4 w-4" /> Quay lại</button>
+      <h1 className="mb-4 text-xl font-semibold text-slate-800">Tạo yêu cầu thực hiện</h1>
+      <div className="space-y-4 rounded-md border border-slate-200 bg-white p-5">
+        <div>
+          <label className="mb-1 block text-sm font-medium text-slate-700">Tiêu đề <span className="text-red-600">*</span></label>
+          <input className={inputCls} value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} placeholder="Ví dụ: Đề nghị lập hồ sơ yêu cầu gói thầu X" />
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium text-slate-700">Mô tả ngắn</label>
+          <textarea className={inputCls} rows={4} maxLength={1000} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Nội dung cần thực hiện, thời hạn mong muốn..." />
+          <div className="mt-0.5 text-right text-xs text-slate-400">{description.length}/1000</div>
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium text-slate-700">Người nhận yêu cầu <span className="text-red-600">*</span></label>
+          {receiverIds.length === 0 ? (
+            <div className="rounded-md bg-amber-50 p-3 text-sm text-amber-800">Chưa có người nhận yêu cầu nào được thiết lập. Vui lòng liên hệ quản trị viên (mục "Người nhận yêu cầu").</div>
+          ) : (
+            <select className={inputCls} value={recipientId} onChange={(e) => setRecipientId(e.target.value)}>
+              <option value="">— Chọn người nhận —</option>
+              {receiverIds.map((id) => <option key={id} value={id}>{nameOf(id)}</option>)}
+            </select>
+          )}
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium text-slate-700">Tệp đính kèm (mọi loại file, tối đa 50 MB/file)</label>
+          <input type="file" multiple onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }} className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-teal-50 file:px-3 file:py-2 file:text-sm file:text-teal-800 hover:file:bg-teal-100" />
+          {files.length > 0 && (
+            <ul className="mt-2 divide-y divide-slate-100 rounded-md border border-slate-200">
+              {files.map((f, i) => (
+                <li key={i} className="flex items-center justify-between px-3 py-1.5 text-sm">
+                  <span className="truncate"><Paperclip className="mr-1 inline h-3.5 w-3.5 text-slate-400" />{f.name} <span className="text-xs text-slate-400">({fmtSize(f.size)})</span></span>
+                  <button type="button" onClick={() => setFiles((cur) => cur.filter((_, j) => j !== i))} className="text-slate-400 hover:text-red-600"><X className="h-4 w-4" /></button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div className="flex justify-end gap-2 pt-2">
+          <button type="button" onClick={onCancel} disabled={busy} className="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Hủy</button>
+          <button type="submit" disabled={busy || receiverIds.length === 0} className="flex items-center gap-2 rounded-md bg-teal-700 px-4 py-2 text-sm text-white hover:bg-teal-800 disabled:opacity-50">
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Gửi yêu cầu
+          </button>
+        </div>
+      </div>
+    </form>
+  );
+}
+
+function RequestDetail({ request, myId, amAdmin, nameOf, emailTemplates, sendMail, showToast, onBack, onChanged }) {
+  const [note, setNote] = useState(request.response_note || '');
+  const [busy, setBusy] = useState(false);
+  const isRecipient = request.recipient_id === myId;
+  const isRequester = request.requester_id === myId;
+  const st = REQUEST_STATUS[request.status];
+
+  async function openFile(att) {
+    const { data, error } = await supabase.storage.from('request-files').createSignedUrl(att.path, 300, { download: att.name });
+    if (error) { showToast('Không tải được file: ' + error.message, 'error'); return; }
+    window.open(data.signedUrl, '_blank');
+  }
+
+  async function setStatus(status) {
+    setBusy(true);
+    const { error } = await supabase.from('work_requests')
+      .update({ status, response_note: note.trim() || null, updated_at: new Date().toISOString() }).eq('id', request.id);
+    if (error) { setBusy(false); showToast('Không cập nhật được: ' + error.message, 'error'); return; }
+    showToast(status === 'done' ? 'Đã đánh dấu hoàn thành' : 'Đã tiếp nhận yêu cầu');
+    const link = `${window.location.origin}${window.location.pathname}?request=${request.id}`;
+    const mail = renderEmailTemplate(emailTemplates, 'request_updated', {
+      nguoi_xu_ly: nameOf(myId), tieu_de: request.title, trang_thai: REQUEST_STATUS[status].label, ghi_chu: note.trim() || '(không có)', link,
+    });
+    await sendMail(request.requester_id, mail.subject, mail.html);
+    setBusy(false);
+    onChanged();
+  }
+
+  async function remove() {
+    if (!window.confirm('Xóa yêu cầu này?')) return;
+    setBusy(true);
+    const paths = (request.attachments || []).map((a) => a.path);
+    if (paths.length) await supabase.storage.from('request-files').remove(paths);
+    const { error } = await supabase.from('work_requests').delete().eq('id', request.id);
+    setBusy(false);
+    if (error) { showToast('Không xóa được: ' + error.message, 'error'); return; }
+    await onChanged();
+    onBack();
+  }
+
+  return (
+    <div className="mx-auto max-w-2xl">
+      <button onClick={onBack} className="mb-3 flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700"><ChevronLeft className="h-4 w-4" /> Quay lại</button>
+      <div className="space-y-4 rounded-md border border-slate-200 bg-white p-5">
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="text-lg font-semibold text-slate-800">{request.title}</h1>
+          <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${st?.cls}`}>{st?.label}</span>
+        </div>
+        <div className="text-sm text-slate-500">
+          Người gửi: <b className="text-slate-700">{nameOf(request.requester_id)}</b> · Người nhận: <b className="text-slate-700">{nameOf(request.recipient_id)}</b><br />
+          Gửi lúc {new Date(request.created_at).toLocaleString('vi-VN')}
+        </div>
+        {request.description && <p className="whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-sm text-slate-700">{request.description}</p>}
+        <div>
+          <div className="mb-1 text-sm font-medium text-slate-700">Tệp đính kèm</div>
+          {(request.attachments || []).length === 0 ? <div className="text-sm text-slate-400">Không có tệp đính kèm</div> : (
+            <ul className="divide-y divide-slate-100 rounded-md border border-slate-200">
+              {request.attachments.map((a, i) => (
+                <li key={i} className="flex items-center justify-between px-3 py-2 text-sm">
+                  <span className="truncate"><Paperclip className="mr-1 inline h-3.5 w-3.5 text-slate-400" />{a.name} <span className="text-xs text-slate-400">({fmtSize(a.size)})</span></span>
+                  <button onClick={() => openFile(a)} className="flex items-center gap-1 text-teal-700 hover:underline"><Download className="h-4 w-4" /> Tải</button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        {(isRecipient || request.response_note) && (
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Phản hồi của người nhận</label>
+            {isRecipient && request.status !== 'done' ? (
+              <textarea className={inputCls} rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ghi chú phản hồi (không bắt buộc)" />
+            ) : (
+              <p className="whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-sm text-slate-700">{request.response_note || '(không có)'}</p>
+            )}
+          </div>
+        )}
+        <div className="flex flex-wrap justify-end gap-2 pt-2">
+          {(isRequester && request.status === 'new') || amAdmin ? (
+            <button onClick={remove} disabled={busy} className="mr-auto flex items-center gap-1 rounded-md border border-red-200 px-3 py-2 text-sm text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /> Xóa</button>
+          ) : null}
+          {isRecipient && request.status === 'new' && (
+            <button onClick={() => setStatus('in_progress')} disabled={busy} className="rounded-md border border-teal-700 px-4 py-2 text-sm text-teal-800 hover:bg-teal-50">Tiếp nhận</button>
+          )}
+          {isRecipient && request.status !== 'done' && (
+            <button onClick={() => setStatus('done')} disabled={busy} className="flex items-center gap-2 rounded-md bg-teal-700 px-4 py-2 text-sm text-white hover:bg-teal-800"><CheckCircle2 className="h-4 w-4" /> Đánh dấu hoàn thành</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RequestReceiversView({ profiles, eligibleIds, showToast }) {
+  const [receiverIds, setReceiverIds] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState(null);
+
+  const load = useCallback(async () => {
+    const { data, error } = await supabase.from('request_receivers').select('user_id');
+    if (error) showToast('Không tải được danh sách người nhận: ' + error.message + ' (đã chạy migration v23 chưa?)', 'error');
+    setReceiverIds((data || []).map((r) => r.user_id));
+    setLoading(false);
+  }, [showToast]);
+  useEffect(() => { load(); }, [load]);
+
+  async function toggle(userId, on) {
+    setBusyId(userId);
+    const res = on
+      ? await supabase.from('request_receivers').insert({ user_id: userId })
+      : await supabase.from('request_receivers').delete().eq('user_id', userId);
+    setBusyId(null);
+    if (res.error) { showToast('Không lưu được: ' + res.error.message, 'error'); return; }
+    setReceiverIds((cur) => (on ? [...cur, userId] : cur.filter((id) => id !== userId)));
+  }
+
+  const candidates = profiles.filter((p) => p.is_admin || eligibleIds.includes(p.id) || receiverIds.includes(p.id));
+
+  return (
+    <div className="mx-auto max-w-3xl">
+      <h1 className="mb-1 text-xl font-semibold text-slate-800">Người nhận yêu cầu</h1>
+      <p className="mb-4 text-sm text-slate-500">
+        Chọn những người sẽ nhận "Yêu cầu thực hiện" từ người dùng. Danh sách gồm người có quyền tạo biểu hồ sơ (người giao việc) và quản trị viên.
+      </p>
+      {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin text-slate-400" /> : candidates.length === 0 ? (
+        <div className="rounded-md border border-dashed border-slate-300 py-10 text-center text-sm text-slate-500">Chưa có người dùng nào được cấp quyền tạo hồ sơ.</div>
+      ) : (
+        <div className="overflow-hidden rounded-md border border-slate-200 bg-white">
+          {candidates.map((p) => {
+            const on = receiverIds.includes(p.id);
+            return (
+              <label key={p.id} className="flex cursor-pointer items-center gap-3 border-b border-slate-100 px-4 py-3 last:border-0 hover:bg-slate-50">
+                <input type="checkbox" className="h-4 w-4 accent-teal-700" checked={on} disabled={busyId === p.id} onChange={(e) => toggle(p.id, e.target.checked)} />
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-slate-800">{p.full_name || '(chưa có tên)'} {p.is_admin && <span className="ml-1 rounded bg-slate-100 px-1.5 text-xs text-slate-500">Quản trị</span>}</div>
+                  <div className="truncate text-xs text-slate-500">{p.email}</div>
+                </div>
+              </label>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function UnitsView({ units, profiles, onCreateUnit, onSetLeader, onDeleteUnit, onSetUserUnit }) {
   const [name, setName] = useState('');
