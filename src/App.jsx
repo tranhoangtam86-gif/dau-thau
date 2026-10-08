@@ -1068,7 +1068,7 @@ export default function App() {
   const [templateFieldMode, setTemplateFieldModeState] = useState({}); // { [docType]: { [projectTypeId]: 'extend' | 'replace' } }
   const [printTemplates, setPrintTemplates] = useState({}); // { [docType]: { layout: [...] } }
   const [docxTemplates, setDocxTemplates] = useState({}); // { [docType]: { storage_path } }
-  const [units, setUnits] = useState([]); // [{ id, ten, leader_id }]
+  const [units, setUnits] = useState([]); // [{ id, ten, leader_id, handler_id }]
   const [emailTemplates, setEmailTemplates] = useState({}); // { [templateKey]: { subject, body } }
   const [excelTemplates, setExcelTemplates] = useState({}); // { [docType]: { [projectTypeId]: { storage_path } } }
   const [myAssignments, setMyAssignments] = useState([]); // giao việc điền thông tin (của tôi hoặc do tôi giao)
@@ -1198,7 +1198,7 @@ export default function App() {
         supabase.from('goi_thau').select('id, project_id, ma_goi_thau, ten_goi_thau, data, created_at'),
         supabase.from('template_field_mode').select('doc_type, project_type_id, mode'),
         supabase.from('app_settings').select('key, value').eq('key', 'email_templates'),
-        supabase.from('units').select('id, ten, leader_id').order('ten'),
+        supabase.from('units').select('id, ten, leader_id, handler_id').order('ten'),
       ]);
 
       // Báo rõ bảng nào tải lỗi (thường do quy tắc RLS trên Supabase) thay vì im lặng hiển thị trống
@@ -2240,6 +2240,12 @@ export default function App() {
     setUnits((prev) => [...prev, data].sort((a, b) => a.ten.localeCompare(b.ten)));
     showToast('Đã tạo đơn vị.');
   }
+  async function setUnitHandler(unitId, handlerId) {
+    const { error } = await supabase.from('units').update({ handler_id: handlerId || null }).eq('id', unitId);
+    if (error) { showToast('Không đặt được người phụ trách: ' + error.message + ' (đã chạy migration v24 chưa?)', 'error'); return; }
+    setUnits((prev) => prev.map((u) => (u.id === unitId ? { ...u, handler_id: handlerId || null } : u)));
+  }
+
   async function setUnitLeader(unitId, leaderId) {
     const { error } = await supabase.from('units').update({ leader_id: leaderId || null }).eq('id', unitId);
     if (error) { showToast('Không thể đặt lãnh đạo: ' + error.message, 'error'); return; }
@@ -2812,6 +2818,7 @@ export default function App() {
             onResetPassword={resetUserPassword}
             onSetPermission={setPermission}
             onRemoveUserFromProject={removeUserFromProject}
+            units={units}
             showToast={showToast}
           />
         )}
@@ -2842,7 +2849,7 @@ export default function App() {
         )}
 
         {view === 'units' && amAdmin && (
-          <UnitsView units={units} profiles={profiles} onCreateUnit={createUnit} onSetLeader={setUnitLeader} onDeleteUnit={deleteUnit} onSetUserUnit={setUserUnit} />
+          <UnitsView units={units} profiles={profiles} onCreateUnit={createUnit} onSetLeader={setUnitLeader} onSetHandler={setUnitHandler} onDeleteUnit={deleteUnit} onSetUserUnit={setUserUnit} />
         )}
 
         {view === 'requests' && (
@@ -4399,7 +4406,7 @@ function UserEditForm({ user, onCancel, onSaveProfile, onResetPassword, onUpdate
 function UsersView({
   profiles, projects, permissions, myId, nameOf,
   onCreateUser, onBulkCreateUsers, onRemoveUser, onToggleAdmin, onUpdateProfile, onUpdateEmail, onResetPassword,
-  onSetPermission, onRemoveUserFromProject, showToast,
+  onSetPermission, onRemoveUserFromProject, units, showToast,
 }) {
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserPassword, setNewUserPassword] = useState('');
@@ -4415,7 +4422,6 @@ function UsersView({
   const [bulkResults, setBulkResults] = useState(null);
   const fileInputRef = useRef(null);
 
-  const [permProjectId, setPermProjectId] = useState('');
   const [permUserId, setPermUserId] = useState('');
 
   function normalizeRows(rawRows) {
@@ -4508,15 +4514,25 @@ function UsersView({
     setConfirmRemoveUser(null);
   }
 
-  const permProject = projects.find((p) => p.id === permProjectId);
-  const usersWithAccess = permProject
-    ? profiles.filter((u) => !u.is_admin && permissions.some((p) => p.projectId === permProject.id && p.userId === u.id && (p.can_view || p.can_add || p.can_edit || p.can_lock || p.can_delete)))
-    : [];
-  const usersWithoutAccess = permProject ? profiles.filter((u) => !u.is_admin && !usersWithAccess.some((x) => x.id === u.id)) : [];
-
-  function permFor(userId, docType) {
-    const row = permissions.find((p) => p.projectId === permProjectId && p.userId === userId && p.docType === docType);
-    return { view: !!row?.can_view, add: !!row?.can_add, edit: !!row?.can_edit, lock: !!row?.can_lock, delete: !!row?.can_delete };
+  const [receiverIds, setReceiverIds] = useState([]);
+  const [receiverBusy, setReceiverBusy] = useState(false);
+  const [openProjects, setOpenProjects] = useState({});
+  const [permUnitId, setPermUnitId] = useState('');
+  const [openUnitProjects, setOpenUnitProjects] = useState({});
+  useEffect(() => {
+    supabase.from('request_receivers').select('user_id').then(({ data, error }) => {
+      if (error) showToast('Không tải được danh sách người nhận yêu cầu: ' + error.message + ' (đã chạy migration v23 chưa?)', 'error');
+      setReceiverIds((data || []).map((r) => r.user_id));
+    });
+  }, [showToast]);
+  async function toggleReceiver(userId, on) {
+    setReceiverBusy(true);
+    const res = on
+      ? await supabase.from('request_receivers').insert({ user_id: userId })
+      : await supabase.from('request_receivers').delete().eq('user_id', userId);
+    setReceiverBusy(false);
+    if (res.error) { showToast('Không lưu được: ' + res.error.message, 'error'); return; }
+    setReceiverIds((cur) => (on ? [...cur, userId] : cur.filter((id) => id !== userId)));
   }
 
   return (
@@ -4647,118 +4663,161 @@ function UsersView({
         </div>
       </div>
 
-      {/* Phân quyền */}
+      {/* Phân quyền theo đơn vị */}
       <div className="rounded-lg border border-stone-200 bg-white p-5">
         <div className="flex items-center gap-2 text-sm font-medium text-stone-700">
-          <Settings2 className="h-4 w-4 text-teal-800" /> Phân quyền theo dự án
+          <Users className="h-4 w-4 text-teal-800" /> Phân quyền theo đơn vị
         </div>
-        <p className="mt-1 text-xs text-stone-400">Chọn dự án, chọn người dùng, rồi tick các quyền tương ứng cho từng loại hồ sơ. Quản trị viên luôn có toàn quyền, không cần thiết lập.</p>
-
-        <div className="mt-3 flex gap-2">
-          <select value={permProjectId} onChange={(e) => { setPermProjectId(e.target.value); setPermUserId(''); }}
-            className="flex-1 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm">
-            <option value="">— Chọn dự án —</option>
-            {projects.map((p) => <option key={p.id} value={p.id}>{p.ten}</option>)}
-          </select>
-        </div>
-
-        {permProject && (
-          <>
-            <div className="mt-4">
-              <div className="text-xs font-medium uppercase tracking-wide text-stone-400">Danh sách người dùng &amp; quyền trong dự án này</div>
-              {usersWithAccess.length === 0 && <div className="mt-2 text-xs text-stone-400">Chưa có ai được cấp quyền.</div>}
-              {usersWithAccess.length > 0 && (
-                <div className="mt-2 overflow-x-auto rounded-md border border-stone-200">
-                  <table className="w-full text-xs">
-                    <thead className="bg-stone-50 text-stone-500">
-                      <tr>
-                        <th className="px-3 py-1.5 text-left">Người dùng</th>
-                        {TYPE_ORDER.map((dt) => <th key={dt} className="px-2 py-1.5 text-left">{DOC_TYPES[dt].short}</th>)}
-                        <th className="w-16"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {usersWithAccess.map((u) => (
-                        <tr
-                          key={u.id}
-                          onClick={() => setPermUserId(u.id)}
-                          className={`cursor-pointer border-t border-stone-100 ${permUserId === u.id ? 'bg-teal-50' : 'hover:bg-stone-50'}`}
-                        >
-                          <td className="px-3 py-1.5 font-medium text-stone-700">{u.full_name}</td>
-                          {TYPE_ORDER.map((dt) => {
-                            const perm = permFor(u.id, dt);
-                            const SHORT = { view: 'Xem', add: 'Thêm', edit: 'Sửa', lock: 'Khóa', delete: 'Xóa' };
-                            const active = ACTIONS.filter((a) => perm[a]).map((a) => SHORT[a]);
-                            return (
-                              <td key={dt} className="px-2 py-1.5 text-stone-500">
-                                {active.length > 0 ? active.join(', ') : <span className="text-stone-300">—</span>}
-                              </td>
-                            );
-                          })}
-                          <td className="px-2 py-1.5 text-right text-teal-700">Sửa</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <p className="border-t border-stone-100 bg-stone-50 px-3 py-1.5 text-[11px] text-stone-400">
-                    Bấm vào dòng để chỉnh chi tiết bên dưới.
-                  </p>
-                </div>
-              )}
+        <p className="mt-1 text-xs text-stone-400">Mỗi đơn vị có <b>người phụ trách hồ sơ</b> và <b>lãnh đạo</b> (chọn ở mục Đơn vị). Quyền thiết lập ở đây được cấp cho cả hai người này. Cần tinh chỉnh riêng từng người thì dùng phần "Phân quyền theo cá nhân" bên dưới.</p>
+        <select value={permUnitId} onChange={(e) => { setPermUnitId(e.target.value); setOpenUnitProjects({}); }}
+          className="mt-3 w-full rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm">
+          <option value="">— Chọn đơn vị —</option>
+          {(units || []).map((u) => <option key={u.id} value={u.id}>{u.ten}</option>)}
+        </select>
+        {(() => {
+          const unit = (units || []).find((u) => u.id === permUnitId);
+          if (!unit) return null;
+          const targets = [...new Set([unit.handler_id, unit.leader_id].filter((id) => id && !profiles.find((p) => p.id === id)?.is_admin))];
+          return (
+            <div className="mt-4 space-y-3">
+              <div className="grid gap-2 rounded-md border border-stone-200 bg-stone-50 p-3 text-sm sm:grid-cols-2">
+                <div><span className="text-xs text-stone-500">Người phụ trách hồ sơ:</span><br /><b className={unit.handler_id ? 'text-stone-800' : 'text-amber-600'}>{unit.handler_id ? nameOf(unit.handler_id) : 'Chưa chọn'}</b></div>
+                <div><span className="text-xs text-stone-500">Lãnh đạo đơn vị:</span><br /><b className={unit.leader_id ? 'text-stone-800' : 'text-amber-600'}>{unit.leader_id ? nameOf(unit.leader_id) : 'Chưa chọn'}</b></div>
+              </div>
+              {targets.length === 0 ? (
+                <div className="rounded-md bg-amber-50 p-3 text-xs text-amber-800">Đơn vị này chưa có người phụ trách hồ sơ hoặc lãnh đạo (không phải quản trị viên). Hãy chọn ở mục "Đơn vị" trước.</div>
+              ) : projects.map((proj) => {
+                const refId = targets[0];
+                const rowsOf = (uid) => permissions.filter((p) => p.projectId === proj.id && p.userId === uid);
+                const hasAccess = rowsOf(refId).some((p) => p.can_view || p.can_add || p.can_edit || p.can_lock || p.can_delete);
+                const open = openUnitProjects[proj.id] ?? hasAccess;
+                const permOf = (docType) => {
+                  const row = rowsOf(refId).find((p) => p.docType === docType);
+                  return { view: !!row?.can_view, add: !!row?.can_add, edit: !!row?.can_edit, lock: !!row?.can_lock, delete: !!row?.can_delete };
+                };
+                return (
+                  <div key={proj.id} className="rounded-md border border-stone-200">
+                    <button type="button" onClick={() => setOpenUnitProjects((cur) => ({ ...cur, [proj.id]: !open }))}
+                      className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-stone-50">
+                      <span className="text-sm font-medium text-stone-800">{proj.ten}</span>
+                      <span className={`text-xs ${hasAccess ? 'text-teal-700' : 'text-stone-400'}`}>{hasAccess ? 'Đơn vị đã có quyền' : 'Chưa có quyền'} · {open ? 'Thu gọn' : 'Mở'}</span>
+                    </button>
+                    {open && (
+                      <div className="border-t border-stone-100 p-3">
+                        <table className="w-full text-xs">
+                          <thead className="text-stone-500">
+                            <tr>
+                              <th className="px-2 py-1 text-left">Loại hồ sơ</th>
+                              {ACTIONS.map((a) => <th key={a} className="px-2 py-1 text-center">{ACTION_LABELS[a]}</th>)}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {TYPE_ORDER.map((docType) => {
+                              const perm = permOf(docType);
+                              return (
+                                <tr key={docType} className="border-t border-stone-100">
+                                  <td className="px-2 py-1.5 text-stone-700">{DOC_TYPES[docType].short}</td>
+                                  {ACTIONS.map((a) => (
+                                    <td key={a} className="px-2 py-1.5 text-center">
+                                      <input type="checkbox" checked={perm[a]} onChange={(e) => targets.forEach((uid) => onSetPermission(proj.id, uid, docType, a, e.target.checked))} />
+                                    </td>
+                                  ))}
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                        {hasAccess && (
+                          <div className="mt-2 text-right">
+                            <button onClick={() => targets.forEach((uid) => onRemoveUserFromProject(proj.id, uid))} className="text-xs text-rose-600 hover:underline">Gỡ đơn vị khỏi dự án này</button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-
-            <div className="mt-3 flex gap-2">
-              <select value={permUserId} onChange={(e) => setPermUserId(e.target.value)}
-                className="flex-1 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm">
-                <option value="">— Thêm người dùng khác vào dự án —</option>
-                {usersWithoutAccess.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
-              </select>
-            </div>
-          </>
-        )}
-
-        {permProject && permUserId && (
-          <div className="mt-4 rounded-md border border-stone-200 p-3">
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-medium text-stone-800">{nameOf(permUserId)}</div>
-              <button onClick={() => { onRemoveUserFromProject(permProjectId, permUserId); setPermUserId(''); }}
-                className="text-xs text-rose-600 hover:underline">Gỡ khỏi dự án</button>
-            </div>
-            <table className="mt-3 w-full text-xs">
-              <thead className="text-stone-500">
-                <tr>
-                  <th className="px-2 py-1 text-left">Loại hồ sơ</th>
-                  {ACTIONS.map((a) => <th key={a} className="px-2 py-1 text-center">{ACTION_LABELS[a]}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {TYPE_ORDER.map((docType) => {
-                  const perm = permFor(permUserId, docType);
-                  return (
-                    <tr key={docType} className="border-t border-stone-100">
-                      <td className="px-2 py-1.5 text-stone-700">{DOC_TYPES[docType].short}</td>
-                      {ACTIONS.map((a) => (
-                        <td key={a} className="px-2 py-1.5 text-center">
-                          <input type="checkbox" checked={perm[a]} onChange={(e) => onSetPermission(permProjectId, permUserId, docType, a, e.target.checked)} />
-                        </td>
-                      ))}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+          );
+        })()}
       </div>
 
-      {/* Quyền nhận yêu cầu thực hiện */}
+      {/* Phân quyền theo cá nhân */}
       <div className="rounded-lg border border-stone-200 bg-white p-5">
-        <RequestReceiversView
-          embedded
-          profiles={profiles}
-          eligibleIds={[...new Set(permissions.filter((p) => p.can_add).map((p) => p.userId))]}
-          showToast={showToast}
-        />
+        <div className="flex items-center gap-2 text-sm font-medium text-stone-700">
+          <Settings2 className="h-4 w-4 text-teal-800" /> Phân quyền theo cá nhân
+        </div>
+        <p className="mt-1 text-xs text-stone-400">Chọn một người dùng, rồi thiết lập quyền của người đó trên từng dự án và từng loại hồ sơ. Quản trị viên luôn có toàn quyền, không cần thiết lập.</p>
+
+        <select value={permUserId} onChange={(e) => { setPermUserId(e.target.value); setOpenProjects({}); }}
+          className="mt-3 w-full rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm">
+          <option value="">— Chọn người dùng —</option>
+          {profiles.filter((u) => !u.is_admin).map((u) => <option key={u.id} value={u.id}>{u.full_name}{u.email ? ` (${u.email})` : ''}</option>)}
+        </select>
+
+        {permUserId && (
+          <div className="mt-4 space-y-3">
+            <label className="flex cursor-pointer items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700">
+              <input type="checkbox" className="h-4 w-4 accent-teal-700" checked={receiverIds.includes(permUserId)} disabled={receiverBusy}
+                onChange={(e) => toggleReceiver(permUserId, e.target.checked)} />
+              <MessageSquarePlus className="h-4 w-4 text-teal-800" />
+              Được nhận "Yêu cầu thực hiện" từ người dùng
+              {!permissions.some((p) => p.userId === permUserId && p.can_add) && <span className="text-xs text-amber-600">(chưa có quyền Thêm hồ sơ ở dự án nào)</span>}
+            </label>
+
+            {projects.length === 0 && <div className="text-xs text-stone-400">Chưa có dự án nào.</div>}
+            {projects.map((proj) => {
+              const rows = permissions.filter((p) => p.projectId === proj.id && p.userId === permUserId);
+              const hasAccess = rows.some((p) => p.can_view || p.can_add || p.can_edit || p.can_lock || p.can_delete);
+              const open = openProjects[proj.id] ?? hasAccess;
+              const permOf = (docType) => {
+                const row = rows.find((p) => p.docType === docType);
+                return { view: !!row?.can_view, add: !!row?.can_add, edit: !!row?.can_edit, lock: !!row?.can_lock, delete: !!row?.can_delete };
+              };
+              return (
+                <div key={proj.id} className="rounded-md border border-stone-200">
+                  <button type="button" onClick={() => setOpenProjects((cur) => ({ ...cur, [proj.id]: !open }))}
+                    className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-stone-50">
+                    <span className="text-sm font-medium text-stone-800">{proj.ten}</span>
+                    <span className={`text-xs ${hasAccess ? 'text-teal-700' : 'text-stone-400'}`}>{hasAccess ? 'Đã được cấp quyền' : 'Chưa có quyền'} · {open ? 'Thu gọn' : 'Mở'}</span>
+                  </button>
+                  {open && (
+                    <div className="border-t border-stone-100 p-3">
+                      <table className="w-full text-xs">
+                        <thead className="text-stone-500">
+                          <tr>
+                            <th className="px-2 py-1 text-left">Loại hồ sơ</th>
+                            {ACTIONS.map((a) => <th key={a} className="px-2 py-1 text-center">{ACTION_LABELS[a]}</th>)}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {TYPE_ORDER.map((docType) => {
+                            const perm = permOf(docType);
+                            return (
+                              <tr key={docType} className="border-t border-stone-100">
+                                <td className="px-2 py-1.5 text-stone-700">{DOC_TYPES[docType].short}</td>
+                                {ACTIONS.map((a) => (
+                                  <td key={a} className="px-2 py-1.5 text-center">
+                                    <input type="checkbox" checked={perm[a]} onChange={(e) => onSetPermission(proj.id, permUserId, docType, a, e.target.checked)} />
+                                  </td>
+                                ))}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                      {hasAccess && (
+                        <div className="mt-2 text-right">
+                          <button onClick={() => onRemoveUserFromProject(proj.id, permUserId)} className="text-xs text-rose-600 hover:underline">Gỡ khỏi dự án này</button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -5262,69 +5321,7 @@ function RequestDetail({ request, myId, amAdmin, nameOf, emailTemplates, sendMai
   );
 }
 
-function RequestReceiversView({ profiles, eligibleIds, showToast, embedded = false }) {
-  const [receiverIds, setReceiverIds] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [busyId, setBusyId] = useState(null);
-
-  const load = useCallback(async () => {
-    const { data, error } = await supabase.from('request_receivers').select('user_id');
-    if (error) showToast('Không tải được danh sách người nhận: ' + error.message + ' (đã chạy migration v23 chưa?)', 'error');
-    setReceiverIds((data || []).map((r) => r.user_id));
-    setLoading(false);
-  }, [showToast]);
-  useEffect(() => { load(); }, [load]);
-
-  async function toggle(userId, on) {
-    setBusyId(userId);
-    const res = on
-      ? await supabase.from('request_receivers').insert({ user_id: userId })
-      : await supabase.from('request_receivers').delete().eq('user_id', userId);
-    setBusyId(null);
-    if (res.error) { showToast('Không lưu được: ' + res.error.message, 'error'); return; }
-    setReceiverIds((cur) => (on ? [...cur, userId] : cur.filter((id) => id !== userId)));
-  }
-
-  const candidates = profiles.filter((p) => p.is_admin || eligibleIds.includes(p.id) || receiverIds.includes(p.id));
-
-  return (
-    <div className={embedded ? '' : 'mx-auto max-w-3xl'}>
-      {embedded ? (
-        <>
-          <div className="flex items-center gap-2 text-sm font-medium text-stone-700">
-            <MessageSquarePlus className="h-4 w-4 text-teal-800" /> Quyền nhận yêu cầu thực hiện
-          </div>
-          <p className="mb-3 mt-1 text-xs text-stone-400">Tick những người sẽ nhận "Yêu cầu thực hiện" từ người dùng. Danh sách gồm người có quyền Thêm hồ sơ ở ít nhất một dự án (người giao việc) và quản trị viên.</p>
-        </>
-      ) : (
-        <>
-          <h1 className="mb-1 text-xl font-semibold text-slate-800">Người nhận yêu cầu</h1>
-          <p className="mb-4 text-sm text-slate-500">Chọn những người sẽ nhận "Yêu cầu thực hiện" từ người dùng.</p>
-        </>
-      )}
-      {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin text-slate-400" /> : candidates.length === 0 ? (
-        <div className="rounded-md border border-dashed border-slate-300 py-10 text-center text-sm text-slate-500">Chưa có người dùng nào được cấp quyền tạo hồ sơ.</div>
-      ) : (
-        <div className="overflow-hidden rounded-md border border-slate-200 bg-white">
-          {candidates.map((p) => {
-            const on = receiverIds.includes(p.id);
-            return (
-              <label key={p.id} className="flex cursor-pointer items-center gap-3 border-b border-slate-100 px-4 py-3 last:border-0 hover:bg-slate-50">
-                <input type="checkbox" className="h-4 w-4 accent-teal-700" checked={on} disabled={busyId === p.id} onChange={(e) => toggle(p.id, e.target.checked)} />
-                <div className="min-w-0">
-                  <div className="text-sm font-medium text-slate-800">{p.full_name || '(chưa có tên)'} {p.is_admin && <span className="ml-1 rounded bg-slate-100 px-1.5 text-xs text-slate-500">Quản trị</span>}</div>
-                  <div className="truncate text-xs text-slate-500">{p.email}</div>
-                </div>
-              </label>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function UnitsView({ units, profiles, onCreateUnit, onSetLeader, onDeleteUnit, onSetUserUnit }) {
+function UnitsView({ units, profiles, onCreateUnit, onSetLeader, onSetHandler, onDeleteUnit, onSetUserUnit }) {
   const [name, setName] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(null);
 
@@ -5369,6 +5366,14 @@ function UnitsView({ units, profiles, onCreateUnit, onSetLeader, onDeleteUnit, o
                 <div className="mt-1 flex items-center gap-2">
                   <span className="text-xs text-stone-500">Lãnh đạo:</span>
                   <select value={u.leader_id || ''} onChange={(e) => onSetLeader(u.id, e.target.value)}
+                    className="flex-1 rounded-md border border-stone-300 bg-white px-2 py-1 text-xs">
+                    <option value="">— chưa có —</option>
+                    {profiles.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+                  </select>
+                </div>
+                <div className="mt-1 flex items-center gap-2">
+                  <span className="text-xs text-stone-500">Phụ trách hồ sơ:</span>
+                  <select value={u.handler_id || ''} onChange={(e) => onSetHandler(u.id, e.target.value)}
                     className="flex-1 rounded-md border border-stone-300 bg-white px-2 py-1 text-xs">
                     <option value="">— chưa có —</option>
                     {profiles.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
