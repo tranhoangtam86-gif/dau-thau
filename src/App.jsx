@@ -2628,32 +2628,6 @@ export default function App() {
           )}
         </div>
 
-        <div className="mt-4 px-5 text-[11px] font-medium uppercase tracking-wide text-teal-400/70">Dự án của tôi</div>
-        <div className="mt-1 flex flex-col gap-0.5 px-3">
-          <button
-            onClick={() => setProjectFilter('all')}
-            className={`flex items-center justify-between rounded-md px-3 py-1.5 text-sm ${
-              projectFilter === 'all' ? 'bg-teal-800/70 text-white' : 'text-teal-200 hover:bg-teal-900/60'
-            }`}
-          >
-            Tất cả dự án
-          </button>
-          {accessibleProjects.length === 0 && (
-            <div className="px-3 py-2 text-xs text-teal-400/70">Chưa có dự án nào được cấp quyền.</div>
-          )}
-          {accessibleProjects.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => setProjectFilter(p.id)}
-              className={`truncate rounded-md px-3 py-1.5 text-left text-sm ${
-                projectFilter === p.id ? 'bg-teal-800/70 text-white' : 'text-teal-200 hover:bg-teal-900/60'
-              }`}
-            >
-              {p.ten}
-            </button>
-          ))}
-        </div>
-
         <div className="mt-4 px-5 text-[11px] font-medium uppercase tracking-wide text-teal-400/70">Biểu mẫu</div>
         <nav className="mt-1 flex flex-col gap-1 px-3">
           {TYPE_ORDER.map((key) => {
